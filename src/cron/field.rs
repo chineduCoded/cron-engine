@@ -137,7 +137,7 @@ impl BitField {
             return None;
         }
 
-        let pos = 63 - self.bits.trailing_zeros();
+        let pos = 63 - self.bits.leading_zeros();
         Some(self.offset + pos)
     }
 
@@ -415,6 +415,28 @@ mod tests {
 
         assert_eq!(next.value, 5);
         assert!(next.wrapped);
+    }
+
+    #[test]
+    fn first_set_returns_smallest_value() {
+        let mut bits = BitField::empty(0, 64);
+
+        bits.set(7);
+        bits.set(30);
+        bits.set(55);
+
+        assert_eq!(bits.first_set(), Some(7));
+    }
+
+    #[test]
+    fn last_set_returns_largest_value() {
+        let mut bits = BitField::empty(0, 64);
+
+        bits.set(7);
+        bits.set(30);
+        bits.set(55);
+
+        assert_eq!(bits.last_set(), Some(55));
     }
 }
 

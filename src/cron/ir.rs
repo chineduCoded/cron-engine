@@ -152,7 +152,7 @@ impl CronValue {
 
     pub fn max(&self) -> Option<u32> {
         match self {
-            CronValue::Bit(bf) => bf.first_set(),
+            CronValue::Bit(bf) => bf.last_set(),
             CronValue::Vec(v) => v.last().copied(),
         }
     }

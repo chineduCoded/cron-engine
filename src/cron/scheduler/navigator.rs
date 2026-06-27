@@ -156,3 +156,204 @@ impl FieldSearch for FieldMatcher {
         self.max()
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cron::{
+        field::BitField,
+        ir::FieldMatcher,
+    };
+
+    fn matcher(values: &[u32]) -> FieldMatcher {
+        let mut bits = BitField::empty(0, 60);
+
+        for &v in values {
+            bits.set(v);
+        }
+
+        FieldMatcher::from(bits)
+    }
+
+    #[test]
+    fn unchanged_when_value_is_present() {
+        let matcher = matcher(&[5, 10, 20]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(10),
+            AdvanceResult::Unchanged,
+        );
+    }
+
+    #[test]
+    fn advances_to_next_allowed_value() {
+        let matcher = matcher(&[5, 10, 20]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(6),
+            AdvanceResult::Changed(10),
+        );
+    }
+
+    #[test]
+    fn advances_from_gap() {
+        let matcher = matcher(&[1, 4, 8]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(2),
+            AdvanceResult::Changed(4),
+        );
+
+        assert_eq!(
+            nav.advance(5),
+            AdvanceResult::Changed(8),
+        );
+    }
+
+    #[test]
+    fn wraps_after_maximum() {
+        let matcher = matcher(&[5, 10, 20]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(21),
+            AdvanceResult::Wrapped(5),
+        );
+    }
+
+    #[test]
+    fn wraps_from_last_value_plus_one() {
+        let matcher = matcher(&[15]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(16),
+            AdvanceResult::Wrapped(15),
+        );
+    }
+
+    #[test]
+    fn single_value_matcher_is_unchanged() {
+        let matcher = matcher(&[42]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(42),
+            AdvanceResult::Unchanged,
+        );
+    }
+
+    #[test]
+    fn single_value_matcher_wraps() {
+        let matcher = matcher(&[42]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(50),
+            AdvanceResult::Wrapped(42),
+        );
+    }
+
+    #[test]
+    fn full_range_never_changes() {
+        let mut bits = BitField::empty(0, 60);
+
+        for i in 0..60 {
+            bits.set(i);
+        }
+
+        let matcher = FieldMatcher::from(bits);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        for i in 0..60 {
+            assert_eq!(
+                nav.advance(i),
+                AdvanceResult::Unchanged,
+            );
+        }
+    }
+
+    #[test]
+    fn min_and_max_are_correct() {
+        let matcher = matcher(&[7, 11, 15, 30]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(nav.min(), 7);
+        assert_eq!(nav.max(), 30);
+    }
+
+    #[test]
+    #[should_panic(expected = "field matcher must not be empty")]
+    fn empty_matcher_panics_on_min() {
+        let bits = BitField::empty(0, 60);
+
+        let matcher = FieldMatcher::from(bits);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        nav.min();
+    }
+
+    #[test]
+    fn advance_is_monotonic_until_wrap() {
+        let matcher = matcher(&[3, 7, 11, 20]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        for current in 0..20 {
+            match nav.advance(current) {
+                AdvanceResult::Changed(next) => {
+                    assert!(next > current);
+                }
+
+                AdvanceResult::Wrapped(next) => {
+                    assert_eq!(next, 3);
+                }
+
+                AdvanceResult::Unchanged => {}
+            }
+        }
+    }
+
+    #[test]
+    fn advance_from_before_first_value() {
+        let matcher = matcher(&[10, 20, 30]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(0),
+            AdvanceResult::Changed(10),
+        );
+    }
+
+    #[test]
+    fn advance_from_between_every_pair() {
+        let matcher = matcher(&[10, 20, 30]);
+
+        let nav = NumericNavigator::new(&matcher);
+
+        assert_eq!(
+            nav.advance(11),
+            AdvanceResult::Changed(20),
+        );
+
+        assert_eq!(
+            nav.advance(21),
+            AdvanceResult::Changed(30),
+        );
+    }
+}
