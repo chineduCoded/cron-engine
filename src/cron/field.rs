@@ -373,7 +373,11 @@ pub const MAX_YEAR: u32 = 5000;
 
 #[cfg(test)]
 mod tests {
-    use crate::cron::field::BitField;
+    use super::*;
+
+    fn field() -> BitField {
+        BitField::empty(0, 64)
+    }
 
     #[test]
     fn with_64() {
@@ -383,38 +387,318 @@ mod tests {
     }
 
     #[test]
-    fn empty_bitfield() {
-        let bits = BitField::empty(0, 64);
+    fn empty_bitfield_has_no_bits() {
+        let bf = BitField::empty(0, 64);
 
-        assert!(bits.is_empty());
+        assert!(bf.is_empty());
+        assert_eq!(bf.len(), 0);
+        assert_eq!(bf.first_set(), None);
+        assert_eq!(bf.last_set(), None)
     }
 
     #[test]
-    fn union() {
-        let mut a = BitField::empty(0, 64);
-        let mut b = BitField::empty(0, 64);
+    fn full_bitfield_has_all_bits() {
+        let bf = BitField::full(0, 64);
 
-        a.set(1);
-        b.set(5);
+        assert!(bf.is_full());
+        assert_eq!(bf.len(), 64);
+        assert_eq!(bf.first_set(), Some(0));
+        assert_eq!(bf.last_set(), Some(63));
+    }
+
+    #[test]
+    fn from_parts_masks_unused_bits() {
+        let bf = BitField::from_parts(u64::MAX, 10, 5);
+
+        assert_eq!(bf.len(), 5);
+        assert_eq!(bf.first_set(), Some(10));
+        assert_eq!(bf.last_set(), Some(14));
+    }
+
+    #[test]
+    fn offset_and_width_are_preserved() {
+        let bf = BitField::empty(5, 10);
+
+        assert_eq!(bf.offset(), 5);
+        assert_eq!(bf.width(), 10);
+        assert_eq!(bf.min_value(), 5);
+        assert_eq!(bf.max_value(), 14);
+    }
+
+        #[test]
+    fn pos_maps_values_correctly() {
+        let bf = BitField::empty(5, 10);
+
+        assert_eq!(bf.pos(5), Some(0));
+        assert_eq!(bf.pos(14), Some(9));
+    }
+
+    #[test]
+    fn pos_returns_none_outside_range() {
+        let bf = BitField::empty(5, 10);
+
+        assert_eq!(bf.pos(4), None);
+        assert_eq!(bf.pos(15), None);
+    }
+
+        #[test]
+    fn set_inside_range() {
+        let mut bf = field();
+
+        assert!(bf.set(5));
+        assert!(bf.contains(5));
+        assert_eq!(bf.len(), 1);
+    }
+
+    #[test]
+    fn set_outside_range_returns_false() {
+        let mut bf = BitField::empty(10, 5);
+
+        assert!(!bf.set(100));
+        assert!(bf.is_empty());
+    }
+
+    #[test]
+    fn setting_same_bit_twice_is_idempotent() {
+        let mut bf = field();
+
+        bf.set(7);
+        bf.set(7);
+
+        assert_eq!(bf.len(), 1);
+    }
+
+        #[test]
+    fn clear_existing_bit() {
+        let mut bf = field();
+
+        bf.set(12);
+
+        assert!(bf.clear(12));
+        assert!(!bf.contains(12));
+    }
+
+    #[test]
+    fn clear_missing_bit() {
+        let mut bf = field();
+
+        assert!(bf.clear(20));
+        assert!(!bf.contains(20));
+    }
+
+    #[test]
+    fn clear_outside_range_returns_false() {
+        let mut bf = BitField::empty(10, 5);
+
+        assert!(!bf.clear(100));
+    }
+
+    #[test]
+    fn contains_only_set_bits() {
+        let mut bf = field();
+
+        bf.set(4);
+        bf.set(10);
+
+        assert!(bf.contains(4));
+        assert!(bf.contains(10));
+
+        assert!(!bf.contains(5));
+        assert!(!bf.contains(9));
+    }
+
+    #[test]
+    fn first_set_returns_smallest_bit() {
+        let mut bf = field();
+
+        bf.set(20);
+        bf.set(5);
+        bf.set(10);
+
+        assert_eq!(bf.first_set(), Some(5));
+    }
+
+    #[test]
+    fn first_set_empty_returns_none() {
+        assert_eq!(field().first_set(), None);
+    }
+
+    #[test]
+    fn last_set_returns_largest_bit() {
+        let mut bf = field();
+
+        bf.set(5);
+        bf.set(17);
+        bf.set(40);
+
+        assert_eq!(bf.last_set(), Some(40));
+    }
+
+    #[test]
+    fn last_set_empty_returns_none() {
+        assert_eq!(field().last_set(), None);
+    }
+
+    #[test]
+    fn values_are_sorted() {
+        let mut bf = field();
+
+        bf.set(20);
+        bf.set(3);
+        bf.set(10);
+
+        assert_eq!(bf.values(), vec![3,10,20]);
+    }
+
+    #[test]
+    fn values_empty() {
+        assert!(field().values().is_empty());
+    }
+
+    #[test]
+    fn iterator_matches_values() {
+        let mut bf = field();
+
+        bf.set(1);
+        bf.set(7);
+        bf.set(40);
+
+        let values: Vec<_> = bf.iter().collect();
+
+        assert_eq!(values, vec![1,7,40]);
+    }
+
+    #[test]
+    fn iterator_empty() {
+        let values: Vec<_> = field().iter().collect();
+
+        assert!(values.is_empty());
+    }
+
+    #[test]
+    fn union_combines_sets() {
+        let mut a = field();
+        let mut b = field();
+
+        a.set(5);
+        a.set(10);
+
+        b.set(20);
+        b.set(10);
 
         a.union_inplace(&b);
 
-        assert!(a.contains(1));
-        assert!(a.contains(5));
+        assert_eq!(a.values(), vec![5,10,20]);
     }
 
     #[test]
-    fn next_bit_wraps() {
-        let mut bits = BitField::empty(0, 60);
+    fn union_with_empty() {
+        let mut a = field();
+        let b = field();
 
-        bits.set(5);
+        a.set(7);
 
-        let next = bits
-            .next_set_bit_wrapping(10)
-            .unwrap();
+        a.union_inplace(&b);
+
+        assert_eq!(a.values(), vec![7]);
+    }
+
+    #[test]
+    fn next_from_exact_match() {
+        let mut bf = field();
+
+        bf.set(5);
+        bf.set(10);
+
+        assert_eq!(bf.next_from(5), Some(5));
+    }
+
+    #[test]
+    fn next_from_between_values() {
+        let mut bf = field();
+
+        bf.set(5);
+        bf.set(10);
+
+        assert_eq!(bf.next_from(6), Some(10));
+    }
+
+    #[test]
+    fn next_from_after_last() {
+        let mut bf = field();
+
+        bf.set(5);
+
+        assert_eq!(bf.next_from(6), None);
+    }
+
+    #[test]
+    fn next_from_empty() {
+        assert_eq!(field().next_from(5), None);
+    }
+
+    #[test]
+    fn next_wrapping_without_wrap() {
+        let mut bf = field();
+
+        bf.set(5);
+        bf.set(20);
+
+        assert_eq!(bf.next_wrapping(6), Some(20));
+    }
+
+    #[test]
+    fn next_wrapping_wraps() {
+        let mut bf = field();
+
+        bf.set(5);
+        bf.set(20);
+
+        assert_eq!(bf.next_wrapping(30), Some(5));
+    }
+
+    #[test]
+    fn next_wrapping_exact_match() {
+        let mut bf = field();
+
+        bf.set(20);
+
+        assert_eq!(bf.next_wrapping(20), Some(20));
+    }
+
+    #[test]
+    fn next_wrapping_empty() {
+        assert_eq!(field().next_wrapping(10), None);
+    }
+
+    #[test]
+    fn next_set_bit_no_wrap() {
+        let mut bf = field();
+
+        bf.set(5);
+        bf.set(20);
+
+        let next = bf.next_set_bit_wrapping(6).unwrap();
+
+        assert_eq!(next.value, 20);
+        assert!(!next.wrapped);
+    }
+
+    #[test]
+    fn next_set_bit_wrap() {
+        let mut bf = field();
+
+        bf.set(5);
+
+        let next = bf.next_set_bit_wrapping(20).unwrap();
 
         assert_eq!(next.value, 5);
         assert!(next.wrapped);
+    }
+
+    #[test]
+    fn next_set_bit_empty() {
+        assert!(field().next_set_bit_wrapping(5).is_none());
     }
 
     #[test]

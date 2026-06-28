@@ -83,7 +83,7 @@ impl CronValue {
         value: u32,
     ) -> bool {
         match self {
-            CronValue::Bit(bf) => bf.first_set() == Some(value),
+            CronValue::Bit(bf) => bf.contains(value),
             CronValue::Vec(v) => v.binary_search(&value).is_ok(),
         }
     }
