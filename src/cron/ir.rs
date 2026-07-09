@@ -1,4 +1,3 @@
-
 use crate::cron::{ast::FieldExpr, field::{BitField, BitFieldIter, MAX_YEAR, MIN_YEAR}};
 use crate::cron::scheduler::field::Field;
 
@@ -308,5 +307,533 @@ impl From<FieldExpr> for DayRule {
                 ])
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::cron::{
+        evaluator::{calendar::{Calendar, Weekday}, day::{evaluate_dom_rule, evaluate_dow_rule, matches_day}}, field::BitField, ir::{CronIr, DayRule},
+    };
+
+    fn bits(values: &[u32]) -> BitField {
+        let mut bf = BitField::empty(1, 31);
+
+        for &v in values {
+            bf.set(v);
+        }
+
+        bf
+    }
+
+    fn cal(
+        year: i32,
+        month: u32,
+        day: u32,
+    ) ->Calendar {
+        Calendar::new(year, month, day)
+    }
+
+    fn matcher(values: &[u32]) -> FieldMatcher {
+        FieldMatcher::from(bits(values))
+    }
+
+    fn ir(
+        dom: DayRule,
+        dow: DayRule,
+        dom_dow_or: bool,
+    ) ->CronIr {
+        CronIr {
+            second: matcher(&[0]),
+            minute: matcher(&[0]),
+            hour: matcher(&[0]),
+            month: matcher(&[1]),
+
+            day_of_month: dom,
+            day_of_week: dow,
+
+            year: None,
+
+            dom_dow_or,
+        }
+    }
+
+    #[test]
+    fn dom_any_matches_everyday() {
+        let cal = cal(2025, 6, 17);
+
+        assert!(evaluate_dom_rule(
+            &DayRule::Any,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dom_bits_matches() {
+        let cal = cal(2025, 6, 15);
+
+        assert!(evaluate_dom_rule(
+            &DayRule::Bits(bits(&[5, 10, 15])),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dom_bits_rejects() {
+        let cal = cal(2025, 6, 14);
+
+        assert!(!evaluate_dom_rule(
+            &DayRule::Bits(bits(&[5, 10, 15])),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dom_last_day_matches() {
+        let cal = cal(2025, 2, 28);
+
+        assert!(evaluate_dom_rule(
+            &DayRule::LastDay,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dom_last_day_leap_year() {
+        let cal = cal(2024, 2, 29);
+
+        assert!(evaluate_dom_rule(
+            &DayRule::LastDay,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dom_last_day_rejects() {
+        let cal = cal(2025, 2, 27);
+
+        assert!(!evaluate_dom_rule(
+            &DayRule::LastDay,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dom_nearest_weekday_matches() {
+        // June 1, 2024 was Saturday.
+        // Nearest weekday = Monday June 3.
+        let cal = cal(2024, 6, 3);
+
+        assert!(evaluate_dom_rule(
+            &DayRule::NearestWeekday(1),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dom_nearest_weekday_rejects_other_days() {
+        let cal = cal(2024, 6, 2);
+
+        assert!(!evaluate_dom_rule(
+            &DayRule::NearestWeekday(1),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dom_list_matches() {
+        let rule = DayRule::List(vec![
+            DayRule::Bits(bits(&[5])),
+            DayRule::LastDay,
+        ]);
+
+        let cal = cal(2025, 6, 5);
+
+        assert!(evaluate_dom_rule(
+            &rule,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dow_any_matches() {
+        let cal = cal(2025, 6, 17);
+
+        assert!(evaluate_dow_rule(
+            &DayRule::Any,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dow_bits_matches() {
+        let cal = cal(2025, 6, 16); // Monday
+
+        assert!(evaluate_dow_rule(
+            &DayRule::Bits(bits(&[1])),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dow_bits_rejects() {
+        let cal = cal(2025, 6, 16);
+
+        assert!(!evaluate_dow_rule(
+            &DayRule::Bits(bits(&[2])),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dow_last_weekday_matches() {
+        // Last Friday of May 2025 = 30
+        let cal = cal(2025, 5, 30);
+
+        assert!(evaluate_dow_rule(
+            &DayRule::LastWeekday(
+                Weekday::new(5).into(),
+            ),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dow_last_weekday_rejects() {
+        let cal = cal(2025, 5, 23);
+
+        assert!(!evaluate_dow_rule(
+            &DayRule::LastWeekday(
+                Weekday::new(5).into(),
+            ),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dow_nth_weekday_matches() {
+        // Third Monday of June 2025 = 16
+        let cal = cal(2025, 6, 16);
+
+        assert!(evaluate_dow_rule(
+            &DayRule::NthWeekday {
+                weekday: Weekday::new(1).into(),
+                nth: 3,
+            },
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dow_nth_weekday_rejects() {
+        let cal = cal(2025, 6, 9);
+
+        assert!(!evaluate_dow_rule(
+            &DayRule::NthWeekday {
+                weekday: Weekday::new(1).into(),
+                nth: 3,
+            },
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn dow_list_matches() {
+        let rule = DayRule::List(vec![
+            DayRule::LastWeekday(
+                Weekday::new(5).into(),
+            ),
+        ]);
+
+        let cal = cal(2025, 5, 30);
+
+        assert!(evaluate_dow_rule(
+            &rule,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn matches_day_any_any() {
+        let cal = cal(2025, 6, 17);
+
+        assert!(matches_day(
+            &ir(
+                DayRule::Any,
+                DayRule::Any,
+                true,
+            ),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn matches_day_dom_only() {
+        let cal = cal(2025, 6, 15);
+
+        assert!(matches_day(
+            &ir(
+                DayRule::Bits(bits(&[15])),
+                DayRule::Any,
+                true,
+            ),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn matches_day_dow_only() {
+        let cal = cal(2025, 6, 16);
+
+        assert!(matches_day(
+            &ir(
+                DayRule::Any,
+                DayRule::Bits(bits(&[1])),
+                true,
+            ),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn matches_day_or_logic() {
+        let cal = cal(2025, 6, 16);
+
+        let ir = ir(
+            DayRule::Bits(bits(&[15])),
+            DayRule::Bits(bits(&[1])),
+            true,
+        );
+
+        assert!(matches_day(&ir, &cal));
+    }
+
+    #[test]
+    fn matches_day_and_logic() {
+        let cal = cal(2025, 6, 16);
+
+        let ir = ir(
+            DayRule::Bits(bits(&[16])),
+            DayRule::Bits(bits(&[1])),
+            false,
+        );
+
+        assert!(matches_day(&ir, &cal));
+    }
+
+    #[test]
+    fn matches_day_and_fails() {
+        let cal = cal(2025, 6, 16);
+
+        let ir = ir(
+            DayRule::Bits(bits(&[15])),
+            DayRule::Bits(bits(&[1])),
+            false,
+        );
+
+        assert!(!matches_day(&ir, &cal));
+    }
+
+    #[test]
+    fn dom_nested_list_matches() {
+        let rule = DayRule::List(vec![
+            DayRule::Bits(bits(&[5])),
+            DayRule::List(vec![
+                DayRule::Bits(bits(&[10])),
+                DayRule::Bits(bits(&[15])),
+            ]),
+        ]);
+
+        let cal = cal(2025, 6, 15);
+
+        assert!(evaluate_dom_rule(&rule, &cal));
+    }
+
+    #[test]
+    fn dow_nested_list_matches() {
+        let rule = DayRule::List(vec![
+            DayRule::Bits(bits(&[2])),
+            DayRule::List(vec![
+                DayRule::Bits(bits(&[1])),
+            ]),
+        ]);
+
+        let cal = cal(2025, 6, 16); // Monday
+
+        assert!(evaluate_dow_rule(&rule, &cal));
+    }
+
+    #[test]
+    fn dom_list_rejects() {
+        let rule = DayRule::List(vec![
+            DayRule::Bits(bits(&[5])),
+            DayRule::Bits(bits(&[10])),
+        ]);
+
+        let cal = cal(2025, 6, 15);
+
+        assert!(!evaluate_dom_rule(&rule, &cal));
+    }
+
+    #[test]
+    fn dow_list_rejects() {
+        let rule = DayRule::List(vec![
+            DayRule::Bits(bits(&[2])),
+            DayRule::Bits(bits(&[3])),
+        ]);
+
+        let cal = cal(2025, 6, 16); // Monday
+
+        assert!(!evaluate_dow_rule(&rule, &cal));
+    }
+
+    #[test]
+    fn last_weekday_all_weekdays() {
+        for weekday in 0..7 {
+            let day = Calendar::last_weekday(
+                2025,
+                12,
+                Weekday::try_from(weekday).unwrap(),
+            );
+
+            let cal = cal(2025, 12, day);
+
+            assert!(evaluate_dow_rule(
+                &DayRule::LastWeekday(weekday),
+                &cal,
+            ));
+        }
+    }
+
+    #[test]
+    fn nth_weekday_all_occurrences() {
+        for nth in 1..=5 {
+            if let Some(day) =
+                Calendar::nth_weekday(2025, 6, 1, nth)
+            {
+                let cal = cal(2025, 6, day);
+
+                assert!(evaluate_dow_rule(
+                    &DayRule::NthWeekday {
+                        weekday: 1,
+                        nth,
+                    },
+                    &cal,
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn impossible_nth_weekday_returns_false() {
+        let cal = cal(2025, 2, 28);
+
+        assert!(!evaluate_dow_rule(
+            &DayRule::NthWeekday {
+                weekday: 1,
+                nth: 5,
+            },
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn nearest_weekday_from_sunday() {
+        // June 1 2025 = Sunday
+        // nearest weekday = Monday June 2
+
+        let cal = cal(2025, 6, 2);
+
+        assert!(evaluate_dom_rule(
+            &DayRule::NearestWeekday(1),
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn last_day_30_day_month() {
+        let cal = cal(2025, 4, 30);
+
+        assert!(evaluate_dom_rule(
+            &DayRule::LastDay,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn last_day_31_day_month() {
+        let cal = cal(2025, 1, 31);
+
+        assert!(evaluate_dom_rule(
+            &DayRule::LastDay,
+            &cal,
+        ));
+    }
+
+    #[test]
+    fn matches_day_or_both_fail() {
+        let cal = cal(2025, 6, 16);
+
+        let ir = ir(
+            DayRule::Bits(bits(&[15])),
+            DayRule::Bits(bits(&[2])),
+            true,
+        );
+
+        assert!(!matches_day(&ir, &cal));
+    }
+
+    #[test]
+    fn matches_day_or_both_match() {
+        let cal = cal(2025, 6, 16);
+
+        let ir = ir(
+            DayRule::Bits(bits(&[16])),
+            DayRule::Bits(bits(&[1])),
+            true,
+        );
+
+        assert!(matches_day(&ir, &cal));
+    }
+
+    #[test]
+    fn matches_day_and_dom_only_fails() {
+        let cal = cal(2025, 6, 16);
+
+        let ir = ir(
+            DayRule::Bits(bits(&[16])),
+            DayRule::Bits(bits(&[2])),
+            false,
+        );
+
+        assert!(!matches_day(&ir, &cal));
+    }
+
+    #[test]
+    fn matches_day_and_dow_only_fails() {
+        let cal = cal(2025, 6, 16);
+
+        let ir = ir(
+            DayRule::Bits(bits(&[15])),
+            DayRule::Bits(bits(&[1])),
+            false,
+        );
+
+        assert!(!matches_day(&ir, &cal));
+    }
+
+    #[test]
+    fn any_ignores_dom_dow_operator() {
+        let cal = cal(2025, 6, 16);
+
+        let ir = ir(
+            DayRule::Any,
+            DayRule::Any,
+            false,
+        );
+
+        assert!(matches_day(&ir, &cal));
     }
 }
