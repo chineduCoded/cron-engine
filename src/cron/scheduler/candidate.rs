@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, Timelike};
 use chrono_tz::Tz;
+use proptest::prelude::*;
 
 use crate::cron::{ir::CronIr, scheduler::{field::Field, navigator::{AdvanceResult, FieldNavigator, NumericNavigator}}, timezone::resolve_local};
 
@@ -1105,7 +1106,35 @@ mod tests {
     }
 }
 
+proptest! {
+    #[test]
+    fn next_day_never_goes_backwards(
+        year in 2020i32..2030,
+        month in 1u32..12,
+        day in 1u32..28,
+    ) {
 
+        let mut candidate =
+            Candidate::new(
+                year,
+                month,
+                day,
+                0,
+                0,
+                0,
+            );
+
+        let before =
+            candidate.to_naive().unwrap();
+
+        candidate.next_valid_day();
+
+        let after =
+            candidate.to_naive().unwrap();
+
+        prop_assert!(after > before);
+    }
+}
 
 
 

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Datelike, TimeZone};
+use proptest::prelude::*;
 
 use crate::cron::scheduler::candidate::Candidate;
 
@@ -785,6 +786,59 @@ mod tests {
         assert_eq!(
             cal.weekday(),
             Calendar::week_day(2025, 7, 20),
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn days_in_month_is_valid(
+        year in 1900i32..2400,
+        month in 1u32..12,
+    ) {
+
+        let days =
+            Calendar::days_in_month(year,month);
+
+        prop_assert!((28..=31).contains(&days));
+    }
+}
+
+proptest! {
+    #[test]
+    fn weekday_is_valid(
+        year in 1900i32..2400,
+        month in 1u32..12,
+        day in 1u32..28,
+    ) {
+
+        let weekday =
+            Calendar::week_day(year,month,day);
+
+        prop_assert!(weekday.0 <= 6);
+    }
+}
+
+proptest! {
+    #[test]
+    fn last_weekday_is_correct(
+        year in 2000i32..2100,
+        month in 1u32..12,
+        weekday in 0u8..7,
+    ) {
+
+        let wd = Weekday::new(weekday);
+
+        let day =
+            Calendar::last_weekday(
+                year,
+                month,
+                wd,
+            );
+
+        prop_assert_eq!(
+            Calendar::week_day(year,month,day),
+            wd,
         );
     }
 }

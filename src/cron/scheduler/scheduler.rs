@@ -3,6 +3,7 @@ use std::fmt::Display;
 
 use chrono::{DateTime, TimeZone, Utc};
 use chrono_tz::Tz;
+use proptest::prelude::*;
 
 use crate::cron::{
     CronError, compiler::CronCompiler, ir::CronIr, parser::CronParser, scheduler::{
@@ -1430,7 +1431,45 @@ mod tests {
     }
 }
 
+proptest! {
 
+    #[test]
+    fn next_after_always_matches(
+        year in 2025i32..2028,
+        month in 1u32..12,
+        day in 1u32..28,
+        hour in 0u32..23,
+        minute in 0u32..59,
+        second in 0u32..59,
+    ) {
+
+        let schedule =
+            CronSchedule::parse("0 */10 * * * *")
+                .unwrap();
+
+        let start = schedule
+            .tz
+            .with_ymd_and_hms(
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+            )
+            .unwrap();
+
+        let next =
+            schedule.next_after(start)
+                .unwrap();
+
+        prop_assert!(
+            schedule.matches(next)
+        );
+
+        prop_assert!(next > start);
+    }
+}
 
 
 

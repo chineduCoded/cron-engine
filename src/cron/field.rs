@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::cron::ast::FieldExpr;
 use std::fmt;
 
+use proptest::prelude::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default, Hash)]
 pub struct BitField {
     bits: u64,
@@ -725,3 +727,61 @@ mod tests {
     }
 }
 
+
+proptest! {
+    #[test]
+    fn set_implies_contains(value in 0u32..63) {
+        let mut bf = BitField::empty(0, 64);
+
+        bf.set(value);
+
+        prop_assert!(bf.contains(value));
+    }
+}
+
+proptest! {
+    #[test]
+    fn clear_removes_membership(value in 0u32..63) {
+        let mut bf = BitField::full(0,64);
+
+        bf.clear(value);
+
+        prop_assert!(!bf.contains(value));
+    }
+}
+
+proptest! {
+    #[test]
+    fn first_is_not_after_last(values in prop::collection::vec(0u32..63,1..64)) {
+
+        let mut bf = BitField::empty(0,64);
+
+        for v in values {
+            bf.set(v);
+        }
+
+        prop_assert!(
+            bf.first_set().unwrap()
+                <=
+            bf.last_set().unwrap()
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn iterator_is_sorted(values in prop::collection::vec(0u32..63,1..64)) {
+
+        let mut bf = BitField::empty(0,64);
+
+        for v in values {
+            bf.set(v);
+        }
+
+        let collected: Vec<_> = bf.iter().collect();
+
+        for pair in collected.windows(2) {
+            prop_assert!(pair[0] < pair[1]);
+        }
+    }
+}

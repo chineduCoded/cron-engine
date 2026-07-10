@@ -11,6 +11,7 @@ derive_builder = "0.20.2"
 lru = "0.18.0"
 memchr = "2.8.1"
 parking_lot = "0.12.5"
+proptest = "1.11.0"
 redis = "1.2.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
