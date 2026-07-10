@@ -16,6 +16,14 @@ pub fn evaluate_dom_rule(
             calendar.is_last_day()
         }
 
+        DayRule::LastBusinessDay => {
+            calendar.day ==
+                Calendar::last_business_day(
+                    calendar.year,
+                    calendar.month,
+                )
+        }
+
         DayRule::NearestWeekday(day) => {
             calendar.day
                 == Calendar::nearest_weekday(
@@ -115,3 +123,4 @@ pub fn matches_day(
         }
     }
 }
+

@@ -70,7 +70,7 @@ pub fn next_after_tz(
         let calendar = Calendar::from(&candidate);
 
         if !matches_day(ir, &calendar) {
-            candidate.day += 1;
+            candidate.next_valid_day();
             candidate.reset_after(Field::Day, ir);
             continue;
         }
@@ -89,7 +89,10 @@ pub fn next_after_tz(
 
         let naive = candidate.to_naive()?;
 
-        let dt = resolve_local(&tz, naive)?;
+        let Some(dt) = resolve_local(&tz, naive) else {
+            candidate.advance_smallest();
+            continue;
+        };
 
         if matches(ir, dt) {
             return Some(dt);

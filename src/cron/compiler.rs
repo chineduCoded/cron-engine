@@ -91,6 +91,8 @@ impl CronCompiler {
 
             FieldExpr::LastDay => DayRule::LastDay,
 
+            FieldExpr::LastBusinessDay => DayRule::LastBusinessDay,
+
             FieldExpr::LastWeekday(day) => {
                 DayRule::LastWeekday(*day)
             }
@@ -140,6 +142,16 @@ impl CronCompiler {
                     return Err(
                         CronError::InvalidDayRule(
                             "L is only valid in day-of-month".into(),
+                        )
+                    );
+                }
+            }
+
+            FieldExpr::LastBusinessDay => {
+                if !matches!(field, DayField::DayOfMonth) {
+                    return Err(
+                        CronError::InvalidDayRule(
+                            "LW is only valid day-of-month".into(),
                         )
                     );
                 }

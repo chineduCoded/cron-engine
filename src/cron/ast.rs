@@ -8,7 +8,8 @@ pub enum FieldExpr {
     Step(Box<FieldExpr>, u32),
     Value(u32),
     LastDay,                           // L
-    LastWeekday(u32),                  // e.g. 5L -> last weekday '5' (weekday 0..6)
+    LastWeekday(u32), // e.g. 5L -> last weekday '5' (weekday 0..6)
+    LastBusinessDay,
     NthWeekday { weekday: u32, nth: u32 }, // e.g. 5#3 -> 3rd weekday '5' (weekday 0..6)
     NearestWeekday(u32),               // e.g. 15W -> nearest weekday to 15th
     And(Box<FieldExpr>, Box<FieldExpr>),// a + b -> intersection (dom AND dow)

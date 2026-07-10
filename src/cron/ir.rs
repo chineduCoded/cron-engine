@@ -231,6 +231,7 @@ pub enum DayRule {
     Bits(BitField),
     LastDay,
     LastWeekday(u32),
+    LastBusinessDay,
     NearestWeekday(u32),
     NthWeekday {
         weekday: u32,
@@ -270,6 +271,8 @@ impl From<FieldExpr> for DayRule {
             FieldExpr::LastWeekday(dow) => {
                 DayRule::LastWeekday(dow)
             }
+
+            FieldExpr::LastBusinessDay => DayRule::LastBusinessDay,
 
             FieldExpr::NearestWeekday(day) => {
                 DayRule::NearestWeekday(day)
@@ -358,6 +361,19 @@ mod tests {
 
             dom_dow_or,
         }
+    }
+
+    #[test]
+    fn matches_day_last_business_day() {
+        let ir = ir(
+            DayRule::LastBusinessDay,
+            DayRule::Any,
+            true,
+        );
+
+        let cal = Calendar::new(2025, 5, 30);
+
+        assert!(matches_day(&ir, &cal));
     }
 
     #[test]

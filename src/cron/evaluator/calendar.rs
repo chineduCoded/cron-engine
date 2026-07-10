@@ -253,6 +253,16 @@ impl Calendar {
         unreachable!("Every month has at least one of each weekday");
     }
 
+    pub fn last_business_day(year: i32, month: u32) -> u32 {
+        let mut day = Self::days_in_month(year, month);
+
+        while Self::week_day(year, month, day).is_weekend() {
+            day -= 1;
+        }
+
+        day
+    }
+
     #[inline]
     pub fn days_in_month(
         year: i32,
@@ -295,6 +305,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_last_business_day() {
+        assert_eq!(Calendar::last_business_day(2025, 5), 30);
+    }
 
     // -------------------------------------------------------------------------
     // Weekday

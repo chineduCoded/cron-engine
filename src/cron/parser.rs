@@ -338,6 +338,10 @@ impl CronParser {
             return Ok(FieldExpr::Wildcard);
         }
 
+        if input.eq_ignore_ascii_case("LW") {
+            return Ok(FieldExpr::LastBusinessDay)
+        }
+
         if input.eq_ignore_ascii_case("L") {
             return Ok(FieldExpr::LastDay);
         }

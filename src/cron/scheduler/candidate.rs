@@ -195,6 +195,14 @@ impl Candidate {
         }
     }
 
+    pub fn next_valid_day(&mut self) {
+        self.map_datetime(|dt| dt + Duration::days(1));
+    }
+
+    pub fn advance_smallest(&mut self) {
+        self.map_datetime(|dt| dt + Duration::seconds(1));
+    }
+
     fn map_datetime(
         &mut self,
         f: impl FnOnce(NaiveDateTime) -> NaiveDateTime,

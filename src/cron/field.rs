@@ -318,6 +318,7 @@ impl BitField {
             // semantic constructs must NOT be forced into BitField
             FieldExpr::LastDay
             | FieldExpr::LastWeekday(_)
+            | FieldExpr::LastBusinessDay
             | FieldExpr::NearestWeekday(_)
             | FieldExpr::NthWeekday { .. } => {
                 BitField::empty(offset, width)
