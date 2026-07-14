@@ -1,1 +1,15 @@
 /target
+criterion/
+
+# DHAT
+dhat-heap.json
+
+# Heaptrack
+heaptrack.*
+
+# Valgrind
+massif.out.*
+callgrind.out.*
+
+# Flamegraphs
+flamegraph.svg

@@ -21,8 +21,8 @@ pub enum Direction {
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct CronSchedule {
-    ir: CronIr,
-    tz: Tz,
+    pub ir: CronIr,
+    pub tz: Tz,
 }
 
 impl CronSchedule {
