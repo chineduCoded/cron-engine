@@ -1,12 +1,12 @@
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use chrono::TimeZone;
 use chrono_tz::UTC;
 
 use cron_engine::cron::{
-    scheduler::candidate::{advance_numeric, Candidate},
+    scheduler::candidate::{Candidate, advance_numeric},
     scheduler::field::Field,
     scheduler::scheduler::CronSchedule,
 };
@@ -14,46 +14,32 @@ use cron_engine::cron::{
 fn candidate(c: &mut Criterion) {
     let schedule = CronSchedule::parse("*/5 * * * * *").unwrap();
 
-    let ir = &schedule.ir;
+    let ir = schedule.ir();
 
     let mut group = c.benchmark_group("candidate");
 
-    group.bench_function("candidate/hour", |b| {
+    group.bench_function("hour", |b| {
         b.iter(|| {
-            let mut candidate = Candidate::from_datetime(
-                UTC.with_ymd_and_hms(2025, 6, 15, 3, 27, 19)
-                    .unwrap(),
-            );
+            let mut candidate =
+                Candidate::from_datetime(UTC.with_ymd_and_hms(2025, 6, 15, 3, 27, 19).unwrap());
 
-            advance_numeric(
-                black_box(&mut candidate), 
-                ir,
-                Field::Hour,
-            );
+            advance_numeric(black_box(&mut candidate), ir, Field::Hour);
         });
     });
 
-    group.bench_function("candidate/minute", |b| {
+    group.bench_function("minute", |b| {
         b.iter(|| {
-            let mut candidate = Candidate::from_datetime(
-                UTC.with_ymd_and_hms(2025, 6, 15, 3, 27, 19)
-                    .unwrap(),
-            );
+            let mut candidate =
+                Candidate::from_datetime(UTC.with_ymd_and_hms(2025, 6, 15, 3, 27, 19).unwrap());
 
-            advance_numeric(
-                black_box(&mut candidate),
-                ir,
-                Field::Minute,
-            );
+            advance_numeric(black_box(&mut candidate), ir, Field::Minute);
         });
     });
 
-    group.bench_function("candidate/reset_after_day", |b| {
+    group.bench_function("reset_after_day", |b| {
         b.iter(|| {
-            let mut candidate = Candidate::from_datetime(
-                UTC.with_ymd_and_hms(2025, 6, 15, 3, 27, 19)
-                    .unwrap(),
-            );
+            let mut candidate =
+                Candidate::from_datetime(UTC.with_ymd_and_hms(2025, 6, 15, 3, 27, 19).unwrap());
 
             candidate.reset_after(Field::Day, ir);
         });

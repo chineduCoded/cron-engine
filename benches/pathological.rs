@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use chrono::TimeZone;
 use chrono_tz::UTC;
@@ -6,9 +6,7 @@ use chrono_tz::UTC;
 use cron_engine::cron::scheduler::scheduler::CronSchedule;
 
 fn pathological(c: &mut Criterion) {
-    let start = UTC
-        .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
-        .unwrap();
+    let start = UTC.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
 
     let schedules = [
         ("Feb 29", "0 0 0 29 2 *"),

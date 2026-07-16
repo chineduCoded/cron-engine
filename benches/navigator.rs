@@ -1,11 +1,9 @@
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use cron_engine::cron::{
-    field::BitField,
-    ir::FieldMatcher,
-    scheduler::navigator::NumericNavigator,
+    field::BitField, ir::FieldMatcher, scheduler::navigator::NumericNavigator,
 };
 
 fn matcher() -> FieldMatcher {
@@ -24,15 +22,15 @@ fn navigator(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("navigator");
 
-    group.bench_function("navigator/min", |b| {
+    group.bench_function("min", |b| {
         b.iter(|| nav.min());
     });
 
-    group.bench_function("navigator/max", |b| {
+    group.bench_function("max", |b| {
         b.iter(|| nav.max());
     });
 
-    group.bench_function("navigator/next", |b| {
+    group.bench_function("next", |b| {
         b.iter(|| nav.next(black_box(37)));
     });
 

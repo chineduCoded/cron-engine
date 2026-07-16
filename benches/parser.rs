@@ -1,5 +1,5 @@
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use criterion::{criterion_group, criterion_main, Criterion};
 
 use cron_engine::cron::parser;
 
@@ -10,25 +10,17 @@ fn parser(c: &mut Criterion) {
 
     group.bench_function("wildcard", |b| {
         b.iter(|| {
-            parser
-                .parse(black_box("* * * * * *"))
-                .unwrap();
+            parser.parse(black_box("* * * * * *")).unwrap();
         });
     });
 
-    group.bench_function("Lists", |b| {
-        b.iter(|| {
-            parser
-                .parse("1,2,3,4 * * * * *")
-                .unwrap()
-        });
+    group.bench_function("lists", |b| {
+        b.iter(|| parser.parse("1,2,3,4 * * * * *").unwrap());
     });
 
     group.bench_function("ranges", |b| {
         b.iter(|| {
-            parser
-                .parse(black_box("0 0-30/5 9-17 * * *"))
-                .unwrap();
+            parser.parse(black_box("0 0-30/5 9-17 * * *")).unwrap();
         });
     });
 
@@ -41,43 +33,27 @@ fn parser(c: &mut Criterion) {
     });
 
     group.bench_function("L", |b| {
-        b.iter(|| {
-            parser
-                .parse("0 0 0 L * *")
-                .unwrap()
-        });
+        b.iter(|| parser.parse("0 0 0 L * *").unwrap());
     });
 
     group.bench_function("LW", |b| {
         b.iter(|| {
-            parser
-                .parse(black_box("0 0 0 LW * *"))
-                .unwrap();
+            parser.parse(black_box("0 0 0 LW * *")).unwrap();
         });
     });
 
     group.bench_function("W", |b| {
-        b.iter(|| {
-            parser
-                .parse("0 0 0 15W * *")
-                .unwrap()
-        });
+        b.iter(|| parser.parse("0 0 0 15W * *").unwrap());
     });
 
     group.bench_function("Nth weekday", |b| {
         b.iter(|| {
-            parser
-                .parse(black_box("0 0 0 * * 5#3"))
-                .unwrap();
+            parser.parse(black_box("0 0 0 * * 5#3")).unwrap();
         });
     });
 
     group.bench_function("Year", |b| {
-        b.iter(|| {
-            parser
-                .parse("0 0 0 * * * 2025")
-                .unwrap()
-        });
+        b.iter(|| parser.parse("0 0 0 * * * 2025").unwrap());
     });
 
     group.finish();

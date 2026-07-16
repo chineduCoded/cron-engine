@@ -1,57 +1,35 @@
-use crate::cron::{evaluator::calendar::{Calendar, Weekday}, ir::{DayRule, CronIr}};
+use crate::cron::{
+    evaluator::calendar::{Calendar, Weekday},
+    ir::{CronIr, DayRule},
+};
 
-
-pub fn evaluate_dom_rule(
-    rule: &DayRule,
-    calendar: &Calendar,
-) -> bool {
+pub fn evaluate_dom_rule(rule: &DayRule, calendar: &Calendar) -> bool {
     match rule {
         DayRule::Any => true,
 
-        DayRule::Bits(bits) => {
-            bits.contains(calendar.day)
-        }
+        DayRule::Bits(bits) => bits.contains(calendar.day),
 
-        DayRule::LastDay => {
-            calendar.is_last_day()
-        }
+        DayRule::LastDay => calendar.is_last_day(),
 
         DayRule::LastBusinessDay => {
-            calendar.day ==
-                Calendar::last_business_day(
-                    calendar.year,
-                    calendar.month,
-                )
+            calendar.day == Calendar::last_business_day(calendar.year, calendar.month)
         }
 
         DayRule::NearestWeekday(day) => {
-            calendar.day
-                == Calendar::nearest_weekday(
-                    calendar.year,
-                    calendar.month,
-                    *day,
-                )
+            calendar.day == Calendar::nearest_weekday(calendar.year, calendar.month, *day)
         }
 
-        DayRule::List(rules) => {
-            rules.iter()
-                .any(|rule| evaluate_dom_rule(rule, calendar))
-        }
+        DayRule::List(rules) => rules.iter().any(|rule| evaluate_dom_rule(rule, calendar)),
 
         _ => false,
     }
 }
 
-pub fn evaluate_dow_rule(
-    rule: &DayRule,
-    calendar: &Calendar,
-) -> bool {
+pub fn evaluate_dow_rule(rule: &DayRule, calendar: &Calendar) -> bool {
     match rule {
         DayRule::Any => true,
 
-        DayRule::Bits(bits) => {
-            bits.contains(calendar.weekday().0 as u32)
-        }
+        DayRule::Bits(bits) => bits.contains(calendar.weekday().0 as u32),
 
         DayRule::LastWeekday(weekday) => {
             let last = Calendar::last_weekday(
@@ -63,22 +41,12 @@ pub fn evaluate_dow_rule(
             calendar.day == last
         }
 
-        DayRule::NthWeekday {
-            weekday,
-            nth,
-        } => {
-            Calendar::nth_weekday(
-                calendar.year,
-                calendar.month,
-                *weekday,
-                *nth,
-            ) == Some(calendar.day)
+        DayRule::NthWeekday { weekday, nth } => {
+            Calendar::nth_weekday(calendar.year, calendar.month, *weekday, *nth)
+                == Some(calendar.day)
         }
 
-        DayRule::List(rules) => {
-            rules.iter()
-                .any(|rule| evaluate_dow_rule(rule, calendar))
-        }
+        DayRule::List(rules) => rules.iter().any(|rule| evaluate_dow_rule(rule, calendar)),
 
         _ => false,
     }
@@ -88,26 +56,12 @@ fn is_any(rule: &DayRule) -> bool {
     matches!(rule, DayRule::Any)
 }
 
-pub fn matches_day(
-    ir: &CronIr,
-    calendar: &Calendar,
-) -> bool {
-    let dom =
-        evaluate_dom_rule(
-            &ir.day_of_month,
-            calendar,
-        );
+pub fn matches_day(ir: &CronIr, calendar: &Calendar) -> bool {
+    let dom = evaluate_dom_rule(&ir.day_of_month, calendar);
 
-    let dow =
-        evaluate_dow_rule(
-            &ir.day_of_week,
-            calendar,
-        );
+    let dow = evaluate_dow_rule(&ir.day_of_week, calendar);
 
-    match (
-        is_any(&ir.day_of_month),
-        is_any(&ir.day_of_week),
-    ) {
+    match (is_any(&ir.day_of_month), is_any(&ir.day_of_week)) {
         (true, true) => true,
 
         (false, true) => dom,
@@ -123,4 +77,3 @@ pub fn matches_day(
         }
     }
 }
-

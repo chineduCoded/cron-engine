@@ -1,25 +1,18 @@
-use chrono::{
-    DateTime,
-    Datelike,
-    Timelike,
-};
+use chrono::{DateTime, Datelike, Timelike};
 use chrono_tz::Tz;
 
 use crate::cron::{
-    evaluator::{calendar::Calendar, day::matches_day}, 
-    ir::CronIr, 
+    evaluator::{calendar::Calendar, day::matches_day},
+    ir::CronIr,
     scheduler::{
-        candidate::{Candidate, advance_numeric}, 
-        field::Field, 
-        normalize::normalize_next
+        candidate::{Candidate, advance_numeric},
+        field::Field,
+        normalize::normalize_next,
     },
     timezone::resolve_local,
 };
 
-pub fn matches(
-    ir: &CronIr,
-    dt: DateTime<Tz>,
-) -> bool {
+pub fn matches(ir: &CronIr, dt: DateTime<Tz>) -> bool {
     let calendar = Calendar::from(&dt);
 
     ir.second.contains(dt.second())
@@ -30,10 +23,7 @@ pub fn matches(
         && matches_day(ir, &calendar)
 }
 
-fn matches_year(
-    ir: &CronIr,
-    year: i32,
-) -> bool {
+fn matches_year(ir: &CronIr, year: i32) -> bool {
     let Ok(year) = u32::try_from(year) else {
         return false;
     };
@@ -44,16 +34,13 @@ fn matches_year(
     }
 }
 
-pub fn next_after_tz(
-    ir: &CronIr,
-    dt: DateTime<Tz>,
-) -> Option<DateTime<Tz>> {
+pub fn next_after_tz(ir: &CronIr, dt: DateTime<Tz>) -> Option<DateTime<Tz>> {
     let dt = normalize_next(dt)?;
 
     let tz = dt.timezone();
 
-    let mut candidate = Candidate::from_datetime(dt); 
-    
+    let mut candidate = Candidate::from_datetime(dt);
+
     loop {
         if candidate.year > ir.max_year() as i32 {
             return None;
@@ -101,11 +88,3 @@ pub fn next_after_tz(
         candidate.second += 1;
     }
 }
-
-
-
-
-
-
-
-

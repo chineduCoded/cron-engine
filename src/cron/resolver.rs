@@ -1,3 +1,19 @@
+//! Lookup tables for named months and weekdays.
+//!
+//! These functions are used by the parser to resolve symbolic names such as
+//! `"JAN"` and `"MON"` into their numeric equivalents.
+
+/// Resolves a month name into its numeric value.
+///
+/// Accepted names are case-insensitive.
+///
+/// # Examples
+///
+/// ```
+/// # use cron_engine::cron::resolver::month_name;
+/// assert_eq!(month_name("JAN"), Some(1));
+/// assert_eq!(month_name("Dec"), Some(12));
+/// ```
 pub fn month_name(input: &str) -> Option<u32> {
     match input.as_bytes() {
         b"JAN" | b"jan" | b"Jan" => Some(1),
@@ -16,6 +32,14 @@ pub fn month_name(input: &str) -> Option<u32> {
     }
 }
 
+/// Resolves a weekday name into its numeric value.
+///
+/// Weekdays follow Quartz numbering:
+///
+/// - Sunday = 0
+/// - Monday = 1
+/// - ...
+/// - Saturday = 6
 pub fn weekday_name(input: &str) -> Option<u32> {
     match input.as_bytes() {
         b"SUN" | b"sun" | b"Sun" => Some(0),
@@ -29,6 +53,9 @@ pub fn weekday_name(input: &str) -> Option<u32> {
     }
 }
 
+/// Resolves a month abbreviation from raw bytes.
+///
+/// This variant avoids UTF-8 allocation during parsing.
 pub fn month_lookup(input: &[u8]) -> Option<u32> {
     match input {
         b"JAN" | b"jan" => Some(1),
@@ -47,6 +74,9 @@ pub fn month_lookup(input: &[u8]) -> Option<u32> {
     }
 }
 
+/// Resolves a weekday abbreviation from raw bytes.
+///
+/// This function is optimized for the parser's byte-oriented fast path.
 pub fn weekday_lookup(input: &[u8]) -> Option<u32> {
     match input {
         b"SUN" | b"sun" => Some(0),

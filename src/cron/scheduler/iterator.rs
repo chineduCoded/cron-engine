@@ -1,8 +1,18 @@
 use chrono::DateTime;
 use chrono_tz::Tz;
 
-use crate::cron::{CronError, scheduler::scheduler::{CronSchedule, Direction}};
+use crate::cron::{
+    CronError,
+    scheduler::scheduler::{CronSchedule, Direction},
+};
 
+/// Lazy iterator over future schedule occurrences.
+///
+/// Created by [`CronSchedule::upcoming`] and
+/// [`CronSchedule::upcoming_inclusive`].
+///
+/// Occurrences are computed on demand rather than being precomputed,
+/// allowing efficient iteration over large or unbounded schedules.
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct CronIterator {
     schedule: CronSchedule,
@@ -39,13 +49,9 @@ impl Iterator for CronIterator {
         };
 
         let next = match self.direction {
-            Direction::Forward => {
-                self.schedule.next_after(start)
-            }
+            Direction::Forward => self.schedule.next_after(start),
 
-            Direction::Backward => {
-                self.schedule.prev_before(start)
-            }
+            Direction::Backward => self.schedule.prev_before(start),
         };
 
         match next {

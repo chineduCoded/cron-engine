@@ -1,91 +1,83 @@
-use crate::cron::{CronError, ast::{CronAst, FieldExpr}, field::{BITFIELD_MAX_WIDTH, BitField}, ir::{CronIr, CronValue, DayRule, FieldMatcher}};
+//! AST → IR compiler.
+//!
+//! Converts parsed syntax into optimized runtime structures.
+//!
+//! Numeric fields become compact BitFields.
+//!
+//! Calendar-specific expressions become DayRule variants.
 
+use crate::cron::{
+    CronError,
+    ast::{CronAst, FieldExpr},
+    field::{BITFIELD_MAX_WIDTH, BitField},
+    ir::{CronIr, CronValue, DayRule, FieldMatcher},
+};
+
+/// Identifies which day field is being validated during compilation.
 #[derive(Debug, Clone, Copy)]
 pub enum DayField {
+    /// Day-of-month field.
     DayOfMonth,
+
+    /// day-of-week field.
     DayOfWeek,
 }
 
+/// Compiles parsed cron expressions into an optimized intermediate
+/// representation.
+///
+/// The compiler performs semantic validation and transforms parsed
+/// expressions into lookup structures optimized for schedule evaluation.
 pub struct CronCompiler;
 
 impl CronCompiler {
-    pub fn compile(
-        ast: CronAst,
-    ) -> Result<CronIr, CronError> {
-        Self::validate_day_rule(
-            &ast.day_of_month, 
-            DayField::DayOfMonth,
-        )?;
+    /// Compiles a parsed cron expression into an optimized intermediate
+    /// representation.
+    ///
+    /// This performs semantic validation before constructing the internal
+    /// structures used by the scheduler.
+    pub fn compile(ast: CronAst) -> Result<CronIr, CronError> {
+        Self::validate_day_rule(&ast.day_of_month, DayField::DayOfMonth)?;
 
-        Self::validate_day_rule(
-            &ast.day_of_week,
-            DayField::DayOfWeek,
-        )?;
+        Self::validate_day_rule(&ast.day_of_week, DayField::DayOfWeek)?;
 
         Ok(CronIr {
-            second: Self::compile_field(
-                &ast.second,
-                0,
-                59,
-            ),
+            second: Self::compile_field(&ast.second, 0, 59),
 
-            minute: Self::compile_field(
-                &ast.minute,
-                0,
-                59,
-            ),
+            minute: Self::compile_field(&ast.minute, 0, 59),
 
-            hour: Self::compile_field(
-                &ast.hour,
-                0,
-                23,
-            ),
+            hour: Self::compile_field(&ast.hour, 0, 23),
 
-            day_of_month: Self::compile_day_rule(
-                &ast.day_of_month,
-                1,
-                31,
-            ),
+            day_of_month: Self::compile_day_rule(&ast.day_of_month, 1, 31),
 
-            month: Self::compile_field(
-                &ast.month,
-                1,
-                12,
-            ),
+            month: Self::compile_field(&ast.month, 1, 12),
 
-            day_of_week: Self::compile_day_rule(
-                &ast.day_of_week,
-                0,
-                6,
-            ),
+            day_of_week: Self::compile_day_rule(&ast.day_of_week, 0, 6),
 
-            year: ast.year.as_ref().map(|expr| {
-                Self::compile_field(
-                    expr,
-                    1,
-                    5000,
-                )
-            }),
+            year: ast
+                .year
+                .as_ref()
+                .map(|expr| Self::compile_field(expr, 1, 5000)),
 
             dom_dow_or: ast.dom_dow_or,
         })
     }
 
-    pub fn compile_field(
-        expr: &FieldExpr,
-        min: u32,
-        max: u32,
-    ) -> FieldMatcher {
+    /// Compiles a standard cron field into an optimized matcher.
+    ///
+    /// Numeric fields are converted into bitsets or value collections
+    /// depending on their size.
+    pub fn compile_field(expr: &FieldExpr, min: u32, max: u32) -> FieldMatcher {
         FieldMatcher {
             value: Self::compile_value(expr, min, max),
         }
     }
 
-    pub fn compile_day_rule(
-        expr: &FieldExpr,
-        min: u32,
-        max: u32,
-    ) -> DayRule {
+    /// Compiles a day-of-month or day-of-week expression.
+    ///
+    /// Unlike numeric fields, day fields support Quartz-specific rules such as
+    /// `L`, `LW`, `W`, and `#`.
+    pub fn compile_day_rule(expr: &FieldExpr, min: u32, max: u32) -> DayRule {
         match expr {
             FieldExpr::Wildcard => DayRule::Any,
 
@@ -93,44 +85,27 @@ impl CronCompiler {
 
             FieldExpr::LastBusinessDay => DayRule::LastBusinessDay,
 
-            FieldExpr::LastWeekday(day) => {
-                DayRule::LastWeekday(*day)
-            }
+            FieldExpr::LastWeekday(day) => DayRule::LastWeekday(*day),
 
-            FieldExpr::NearestWeekday(day) => {
-                DayRule::NearestWeekday(*day)
-            }
+            FieldExpr::NearestWeekday(day) => DayRule::NearestWeekday(*day),
 
-            FieldExpr::NthWeekday { weekday, nth } => {
-                DayRule::NthWeekday { 
-                    weekday: *weekday, 
-                    nth: *nth, 
-                }
-            }
+            FieldExpr::NthWeekday { weekday, nth } => DayRule::NthWeekday {
+                weekday: *weekday,
+                nth: *nth,
+            },
 
-            FieldExpr::List(items) => {
-                DayRule::List(
-                    items
-                        .iter()
-                        .map(|item| {
-                            Self::compile_day_rule(
-                                item, 
-                                min, 
-                                max
-                            )
-                        })
-                        .collect(),
-                )
-            }
+            FieldExpr::List(items) => DayRule::List(
+                items
+                    .iter()
+                    .map(|item| Self::compile_day_rule(item, min, max))
+                    .collect(),
+            ),
 
             _ => DayRule::Bits(Self::compile_bits(expr, min, max)),
         }
     }
 
-    fn validate_day_rule(
-        expr: &FieldExpr,
-        field: DayField,
-    ) -> Result<(), CronError> {
+    fn validate_day_rule(expr: &FieldExpr, field: DayField) -> Result<(), CronError> {
         match expr {
             FieldExpr::Wildcard
             | FieldExpr::Value(_)
@@ -139,99 +114,75 @@ impl CronCompiler {
 
             FieldExpr::LastDay => {
                 if !matches!(field, DayField::DayOfMonth) {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            "L is only valid in day-of-month".into(),
-                        )
-                    );
+                    return Err(CronError::InvalidDayRule(
+                        "L is only valid in day-of-month".into(),
+                    ));
                 }
             }
 
             FieldExpr::LastBusinessDay => {
                 if !matches!(field, DayField::DayOfMonth) {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            "LW is only valid day-of-month".into(),
-                        )
-                    );
+                    return Err(CronError::InvalidDayRule(
+                        "LW is only valid day-of-month".into(),
+                    ));
                 }
             }
 
             FieldExpr::NearestWeekday(day) => {
                 if !matches!(field, DayField::DayOfMonth) {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            "W is only valid in day-of-month".into(),
-                        )
-                    );
+                    return Err(CronError::InvalidDayRule(
+                        "W is only valid in day-of-month".into(),
+                    ));
                 }
 
-                if *day == 0 || * day > 31 {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            format!(
-                                "invalid nearest weekday '{}'",
-                                day
-                           )
-                        )
-                    );
+                if *day == 0 || *day > 31 {
+                    return Err(CronError::InvalidDayRule(format!(
+                        "invalid nearest weekday '{}'",
+                        day
+                    )));
                 }
             }
 
             FieldExpr::LastWeekday(day) => {
                 if !matches!(field, DayField::DayOfWeek) {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            "xL is only valid in day-of-week"
-                                .into(),
-                        ),
-                    );
+                    return Err(CronError::InvalidDayRule(
+                        "xL is only valid in day-of-week".into(),
+                    ));
                 }
 
                 if *day > 6 {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            format!(
-                                "invalid weekday '{}'",
-                                day
-                            ),
-                        ),
-                    );
+                    return Err(CronError::InvalidDayRule(format!(
+                        "invalid weekday '{}'",
+                        day
+                    )));
                 }
             }
 
             FieldExpr::NthWeekday { weekday, nth } => {
                 if !matches!(field, DayField::DayOfWeek) {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            "# is only valid in day-of-week".into(),
-                        )
-                    );
+                    return Err(CronError::InvalidDayRule(
+                        "# is only valid in day-of-week".into(),
+                    ));
                 }
 
                 if *weekday > 6 {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            format!("invalid weekday '{}'", weekday)
-                        )
-                    );
+                    return Err(CronError::InvalidDayRule(format!(
+                        "invalid weekday '{}'",
+                        weekday
+                    )));
                 }
 
                 if *nth == 0 || *nth > 5 {
-                    return Err(
-                        CronError::InvalidDayRule(
-                            format!("invalid nth value '{}'", nth)
-                        )
-                    );
+                    return Err(CronError::InvalidDayRule(format!(
+                        "invalid nth value '{}'",
+                        nth
+                    )));
                 }
             }
 
             FieldExpr::List(items) => {
                 for item in items {
-                    Self::validate_day_rule(
-                        item,
-                        field,
-                    )?;
+                    Self::validate_day_rule(item, field)?;
                 }
             }
 
@@ -244,11 +195,11 @@ impl CronCompiler {
         Ok(())
     }
 
-    pub fn compile_bits(
-        expr: &FieldExpr,
-        min: u32,
-        max: u32,
-    ) -> BitField {
+    /// Compiles a field expression into a dense bitset.
+    ///
+    /// This is used for fields whose value range fits efficiently within
+    /// a bitmap.
+    pub fn compile_bits(expr: &FieldExpr, min: u32, max: u32) -> BitField {
         assert!(min <= max, "invalid range: min > max ({min}, {max})");
 
         let width = max - min + 1;
@@ -260,12 +211,7 @@ impl CronCompiler {
         bits
     }
 
-    fn compile_into(
-        expr: &FieldExpr,
-        bits: &mut BitField,
-        min: u32,
-        max: u32,
-    ) {
+    fn compile_into(expr: &FieldExpr, bits: &mut BitField, min: u32, max: u32) {
         match expr {
             FieldExpr::Wildcard => {
                 *bits = BitField::full(min, max - min + 1);
@@ -288,12 +234,7 @@ impl CronCompiler {
 
             FieldExpr::List(items) => {
                 for item in items {
-                    Self::compile_into(
-                        item, 
-                        bits, 
-                        min, 
-                        max
-                    );
+                    Self::compile_into(item, bits, min, max);
                 }
             }
 
@@ -305,13 +246,7 @@ impl CronCompiler {
         }
     }
 
-    fn compile_step(
-        base: &FieldExpr,
-        out: &mut BitField,
-        step: u32,
-        min: u32,
-        max: u32,
-    ) {
+    fn compile_step(base: &FieldExpr, out: &mut BitField, step: u32, min: u32, max: u32) {
         match base {
             FieldExpr::Wildcard => {
                 let mut value = min;
@@ -335,8 +270,7 @@ impl CronCompiler {
             }
 
             _ => {
-                let bits =
-                    Self::compile_bits(base, min, max);
+                let bits = Self::compile_bits(base, min, max);
 
                 let mut first = None;
 
@@ -352,9 +286,7 @@ impl CronCompiler {
                 };
 
                 for value in min..=max {
-                    if bits.contains(value)
-                        && ((value - origin) % step == 0)
-                    {
+                    if bits.contains(value) && ((value - origin) % step == 0) {
                         out.set(value);
                     }
                 }
@@ -362,6 +294,10 @@ impl CronCompiler {
         }
     }
 
+    /// Compiles a field expression into its most efficient value representation.
+    ///
+    /// Small ranges are stored as bitsets while larger domains use vector-backed
+    /// storage.
     pub fn compile_value(expr: &FieldExpr, min: u32, max: u32) -> CronValue {
         let width = max - min + 1;
 
@@ -415,11 +351,7 @@ mod tests {
 
     #[test]
     fn wildcard_sets_everything() {
-        let bits = CronCompiler::compile_bits(
-            &FieldExpr::Wildcard,
-            0,
-            59,
-        );
+        let bits = CronCompiler::compile_bits(&FieldExpr::Wildcard, 0, 59);
 
         for v in 0..=59 {
             assert!(bits.contains(v));
@@ -428,11 +360,7 @@ mod tests {
 
     #[test]
     fn single_value() {
-        let bits = CronCompiler::compile_bits(
-            &FieldExpr::Value(15),
-            0,
-            59,
-        );
+        let bits = CronCompiler::compile_bits(&FieldExpr::Value(15), 0, 59);
 
         assert!(bits.contains(15));
         assert!(!bits.contains(14));
@@ -441,22 +369,14 @@ mod tests {
 
     #[test]
     fn value_outside_range() {
-        let bits = CronCompiler::compile_bits(
-            &FieldExpr::Value(100),
-            0,
-            59,
-        );
+        let bits = CronCompiler::compile_bits(&FieldExpr::Value(100), 0, 59);
 
         assert!(bits.is_empty());
     }
 
     #[test]
     fn range() {
-        let bits = CronCompiler::compile_bits(
-            &FieldExpr::Range(10, 15),
-            0,
-            59,
-        );
+        let bits = CronCompiler::compile_bits(&FieldExpr::Range(10, 15), 0, 59);
 
         for v in 10..=15 {
             assert!(bits.contains(v));
@@ -468,11 +388,7 @@ mod tests {
 
     #[test]
     fn range_clamps() {
-        let bits = CronCompiler::compile_bits(
-            &FieldExpr::Range(50, 100),
-            0,
-            59,
-        );
+        let bits = CronCompiler::compile_bits(&FieldExpr::Range(50, 100), 0, 59);
 
         for v in 50..=59 {
             assert!(bits.contains(v));
@@ -499,10 +415,7 @@ mod tests {
     #[test]
     fn duplicate_values() {
         let bits = CronCompiler::compile_bits(
-            &FieldExpr::List(vec![
-                FieldExpr::Value(5),
-                FieldExpr::Value(5),
-            ]),
+            &FieldExpr::List(vec![FieldExpr::Value(5), FieldExpr::Value(5)]),
             0,
             59,
         );
@@ -512,14 +425,8 @@ mod tests {
 
     #[test]
     fn wildcard_step() {
-        let bits = CronCompiler::compile_bits(
-            &FieldExpr::Step(
-                Box::new(FieldExpr::Wildcard),
-                15,
-            ),
-            0,
-            59,
-        );
+        let bits =
+            CronCompiler::compile_bits(&FieldExpr::Step(Box::new(FieldExpr::Wildcard), 15), 0, 59);
 
         assert!(bits.contains(0));
         assert!(bits.contains(15));
@@ -532,10 +439,7 @@ mod tests {
     #[test]
     fn range_step() {
         let bits = CronCompiler::compile_bits(
-            &FieldExpr::Step(
-                Box::new(FieldExpr::Range(10, 20)),
-                5,
-            ),
+            &FieldExpr::Step(Box::new(FieldExpr::Range(10, 20)), 5),
             0,
             59,
         );
@@ -549,14 +453,8 @@ mod tests {
 
     #[test]
     fn step_one() {
-        let bits = CronCompiler::compile_bits(
-            &FieldExpr::Step(
-                Box::new(FieldExpr::Wildcard),
-                1,
-            ),
-            0,
-            59,
-        );
+        let bits =
+            CronCompiler::compile_bits(&FieldExpr::Step(Box::new(FieldExpr::Wildcard), 1), 0, 59);
 
         for v in 0..=59 {
             assert!(bits.contains(v));
@@ -565,14 +463,8 @@ mod tests {
 
     #[test]
     fn huge_step() {
-        let bits = CronCompiler::compile_bits(
-            &FieldExpr::Step(
-                Box::new(FieldExpr::Wildcard),
-                100,
-            ),
-            0,
-            59,
-        );
+        let bits =
+            CronCompiler::compile_bits(&FieldExpr::Step(Box::new(FieldExpr::Wildcard), 100), 0, 59);
 
         assert!(bits.contains(0));
 
@@ -585,18 +477,11 @@ mod tests {
     fn nested_expressions() {
         let expr = FieldExpr::List(vec![
             FieldExpr::Value(1),
-            FieldExpr::Range(5,10),
-            FieldExpr::Step(
-                Box::new(FieldExpr::Wildcard),
-                20,
-            ),
+            FieldExpr::Range(5, 10),
+            FieldExpr::Step(Box::new(FieldExpr::Wildcard), 20),
         ]);
 
-        let bits = CronCompiler::compile_bits(
-            &expr,
-            0,
-            59,
-        );
+        let bits = CronCompiler::compile_bits(&expr, 0, 59);
 
         assert!(bits.contains(1));
         assert!(bits.contains(5));

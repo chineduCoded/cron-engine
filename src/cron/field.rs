@@ -1,3 +1,9 @@
+//! Compact bitmap implementation used throughout the cron engine.
+//!
+//! `BitField` provides constant-time membership checks and efficient
+//! navigation between enabled values. It is used by the compiler and
+//! scheduler to represent numeric cron fields without heap allocations.
+
 use serde::{Deserialize, Serialize};
 
 use crate::cron::ast::FieldExpr;
@@ -5,14 +11,18 @@ use std::fmt;
 
 use proptest::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default, Hash)]
-pub struct BitField {
-    bits: u64,
-    offset: u32,
-    width: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default, Hash)]
+/// Iterator over the enabled values in a [`BitField`].
+///
+/// Values are yielded in ascending order. The iterator consumes an internal
+/// copy of the bitmap, leaving the original [`BitField`] unchanged.
+///
+/// This iterator performs allocation-free iteration by repeatedly extracting
+/// the least significant set bit.
+///
+/// Constructed by [`BitField::iter`].
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default, Hash,
+)]
 pub struct BitFieldIter {
     bits: u64,
     offset: u32,
@@ -34,10 +44,51 @@ impl Iterator for BitFieldIter {
     }
 }
 
+/// Result of a wrapping bitfield search.
+///
+/// Returned by methods such as [`BitField::next_wrapping`] to indicate both
+/// the matching value and whether the search wrapped around to the beginning
+/// of the field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NextBit {
+    /// The matching value.
     pub value: u32,
+
+    /// Indicates whether the search wrapped to the beginning of the field.
     pub wrapped: bool,
+}
+
+/// A compact fixed-width bitmap for representing a contiguous range of integer
+/// values.
+///
+/// `BitField` stores up to 64 consecutive values inside a single `u64`,
+/// making membership checks and navigation operations constant time.
+///
+/// Each bit corresponds to one integer value beginning at `offset`.
+///
+/// For example:
+///
+/// ```text
+/// offset = 1
+/// width  = 5
+///
+/// values: 1 2 3 4 5
+/// bits:   1 0 1 1 0
+/// ```
+///
+/// This type is used internally by the cron compiler to represent fields
+/// such as seconds, minutes, hours, months, and simple day-of-month rules.
+///
+/// # Complexity
+///
+/// Most operations are **O(1)**.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default, Hash,
+)]
+pub struct BitField {
+    bits: u64,
+    offset: u32,
+    width: u32,
 }
 
 impl BitField {
@@ -49,6 +100,11 @@ impl BitField {
         }
     }
 
+    /// Creates a new bitfield.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `width` is zero or greater than 64.
     pub const fn from_parts(bits: u64, offset: u32, width: u32) -> Self {
         assert!(width > 0);
         assert!(width <= 64, "BitField width must be <= 64");
@@ -66,58 +122,148 @@ impl BitField {
         }
     }
 
+    /// Creates an empty bitfield.
+    ///
+    /// All values are initially unset.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let bf = BitField::empty(1, 31);
+    ///
+    /// assert!(!bf.contains(10));
+    /// ```
     pub const fn empty(offset: u32, width: u32) -> Self {
         Self::from_parts(0, offset, width)
     }
 
+    /// Creates a bitfield with every value enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let bf = BitField::full(0, 60);
+    ///
+    /// assert!(bf.contains(15));
+    /// ```
     pub const fn full(offset: u32, width: u32) -> Self {
         Self::from_parts(Self::width_mask(width), offset, width)
     }
 
+    /// Returns an iterator over all enabled values in ascending order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let mut bf = BitField::empty(1, 5);
+    /// bf.set(2);
+    /// bf.set(4);
+    ///
+    /// let values: Vec<_> = bf.iter().collect();
+    ///
+    /// assert_eq!(values, vec![2, 4]);
+    /// ```
     pub fn iter(&self) -> BitFieldIter {
-        BitFieldIter { bits: self.as_u64(), offset: self.offset }
+        BitFieldIter {
+            bits: self.as_u64(),
+            offset: self.offset,
+        }
     }
 
+    /// Returns `true` if no values are enabled.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.bits == 0
     }
 
+    /// Returns `true` if every representable value is enabled.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let bf = BitField::full(0, 60);
+    /// assert!(bf.is_full());
+    /// ```
     #[inline]
     pub fn is_full(&self) -> bool {
         self.bits == Self::width_mask(self.width)
     }
 
+    /// Returns the number of enabled values.
+    ///
+    /// # Complexity
+    ///
+    /// O(number of set bits)
     #[inline]
     pub fn len(&self) -> u32 {
         self.bits.count_ones()
     }
 
+    /// Returns the underlying bitmap.
+    ///
+    /// This method is intended primarily for debugging, testing,
+    /// and low-level optimizations.
     #[inline]
     pub fn as_u64(&self) -> u64 {
         self.bits
     }
 
+    /// Returns the smallest value represented by this bitfield.
     #[inline]
     pub fn offset(&self) -> u32 {
         self.offset
     }
 
+    /// Returns the number of values represented by this bitfield.
     #[inline]
     pub fn width(&self) -> u32 {
         self.width
     }
 
+    /// Returns the smallest representable value.
     #[inline]
     pub fn min_value(&self) -> u32 {
         self.offset
     }
 
+    /// Returns the largest representable value.
     #[inline]
     pub fn max_value(&self) -> u32 {
         self.offset + self.width - 1
     }
 
+    /// Returns the zero-based bit position corresponding to `value`.
+    ///
+    /// The returned position is relative to the field's offset.
+    ///
+    /// Returns `None` if `value` lies outside the representable range.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let bf = BitField::empty(10, 5);
+    ///
+    /// assert_eq!(bf.pos(10), Some(0));
+    /// assert_eq!(bf.pos(14), Some(4));
+    /// assert_eq!(bf.pos(15), None);
+    /// ```
     #[inline]
     pub fn pos(&self, value: u32) -> Option<u32> {
         if value < self.offset || value >= self.offset + self.width {
@@ -127,6 +273,24 @@ impl BitField {
         }
     }
 
+    /// Returns the smallest enabled value.
+    ///
+    /// Returns `None` if the bitfield contains no enabled values.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let mut bf = BitField::empty(1, 31);
+    /// bf.set(10);
+    /// bf.set(20);
+    ///
+    /// assert_eq!(bf.first_set(), Some(10));
+    /// ```
     pub fn first_set(&self) -> Option<u32> {
         if self.bits == 0 {
             return None;
@@ -134,6 +298,24 @@ impl BitField {
         Some(self.offset + self.bits.trailing_zeros())
     }
 
+    /// Returns the largest enabled value.
+    ///
+    /// Returns `None` if the bitfield contains no enabled values.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let mut bf = BitField::empty(1, 31);
+    /// bf.set(10);
+    /// bf.set(20);
+    ///
+    /// assert_eq!(bf.last_set(), Some(20));
+    /// ```
     pub fn last_set(&self) -> Option<u32> {
         if self.bits == 0 {
             return None;
@@ -143,6 +325,32 @@ impl BitField {
         Some(self.offset + pos)
     }
 
+    /// Returns the first enabled value greater than or equal to `start`.
+    ///
+    /// Unlike [`BitField::next_wrapping`], this method does not wrap to the
+    /// beginning of the field.
+    ///
+    /// Returns `None` if:
+    ///
+    /// - the bitfield is empty,
+    /// - `start` lies beyond the field's range, or
+    /// - no enabled value exists after `start`.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let mut bf = BitField::empty(0, 60);
+    /// bf.set(5);
+    /// bf.set(20);
+    ///
+    /// assert_eq!(bf.next_from(6), Some(20));
+    /// assert_eq!(bf.next_from(21), None);
+    /// ```
     #[inline]
     pub fn next_from(&self, start: u32) -> Option<u32> {
         if self.bits == 0 {
@@ -165,11 +373,21 @@ impl BitField {
         Some(self.offset + pos)
     }
 
+    /// Returns the next enabled value, wrapping to the beginning if necessary.
+    ///
+    /// Unlike [`BitField::next_from`], this method never stops at the upper bound.
+    /// If no later value exists, the search continues from the minimum value.
+    ///
+    /// Returns `None` only if the bitfield is empty.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
     pub fn next_wrapping(&self, start: u32) -> Option<u32> {
         if self.bits == 0 {
             return None;
         }
-        
+
         let start = start.saturating_sub(self.offset);
 
         let shifted = self.bits >> start;
@@ -182,6 +400,13 @@ impl BitField {
         self.first_set()
     }
 
+    /// Enables the specified value.
+    ///
+    /// Values outside the configured range are ignored.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
     pub fn set(&mut self, value: u32) -> bool {
         match self.pos(value) {
             Some(pos) => {
@@ -192,6 +417,11 @@ impl BitField {
         }
     }
 
+    /// Disables the specified value.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
     pub fn clear(&mut self, value: u32) -> bool {
         match self.pos(value) {
             Some(pos) => {
@@ -202,11 +432,30 @@ impl BitField {
         }
     }
 
+    /// Returns `true` if the given value is present.
+    ///
+    /// Values outside the configured range always return `false`.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let mut bf = BitField::empty(1, 31);
+    /// bf.set(15);
+    ///
+    /// assert!(bf.contains(15));
+    /// assert!(!bf.contains(16));
+    /// ```
     pub fn contains(&self, value: u32) -> bool {
         self.pos(value)
             .is_some_and(|pos| (self.bits & (1u64 << pos)) != 0)
     }
 
+    /// Returns the union of two bitfields.
     pub fn union_inplace(&mut self, other: &Self) {
         debug_assert_eq!(self.offset, other.offset);
         debug_assert_eq!(self.width, other.width);
@@ -214,6 +463,27 @@ impl BitField {
         self.bits |= other.bits;
     }
 
+    /// Returns all enabled values in ascending order.
+    ///
+    /// This is primarily intended for debugging, testing, serialization,
+    /// and interoperability. For allocation-free traversal, prefer
+    /// [`BitField::iter`].
+    ///
+    /// # Complexity
+    ///
+    /// O(n), where *n* is the number of enabled values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::BitField;
+    /// let mut bf = BitField::empty(1, 10);
+    /// bf.set(2);
+    /// bf.set(5);
+    /// bf.set(8);
+    ///
+    /// assert_eq!(bf.values(), vec![2, 5, 8]);
+    /// ```
     pub fn values(&self) -> Vec<u32> {
         let mut bits = self.bits;
         let mut values = Vec::with_capacity(self.len() as usize);
@@ -265,6 +535,9 @@ impl BitField {
         })
     }
 
+    /// Builds a bitfield from a parsed cron field expression.
+    ///
+    /// This is primarily used by the cron compiler during IR generation.
     pub fn from_expr(expr: &FieldExpr, offset: u32, width: u32) -> Self {
         match expr {
             FieldExpr::Wildcard => BitField::full(offset, width),
@@ -322,9 +595,7 @@ impl BitField {
             | FieldExpr::LastWeekday(_)
             | FieldExpr::LastBusinessDay
             | FieldExpr::NearestWeekday(_)
-            | FieldExpr::NthWeekday { .. } => {
-                BitField::empty(offset, width)
-            }
+            | FieldExpr::NthWeekday { .. } => BitField::empty(offset, width),
         }
     }
 }
@@ -342,36 +613,177 @@ impl fmt::Display for BitField {
     }
 }
 
-
 /// Const-generic Flags for semantic cron bits (small width).
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Flags<const OFFSET: u32, const WIDTH: u32>(pub u64);
 
 impl<const OFFSET: u32, const WIDTH: u32> Flags<OFFSET, WIDTH> {
-    pub const fn mask() -> u64 { if WIDTH >= 64 { u64::MAX } else { (1u64 << WIDTH) - 1 } }
-    pub const fn new(bits: u64) -> Self { Self(bits & Self::mask()) }
-    pub const fn empty() -> Self { Self::new(0) }
-    pub const fn bit(p: u32) -> u64 { 1u64 << p }
-    pub const fn with(self, mask: u64) -> Self { Self::new(self.0 | mask) }
-    pub const fn without(self, mask: u64) -> Self { Self::new(self.0 & !mask) }
-    pub const fn contains(self, bit: u64) -> bool { (self.0 & bit) != 0 }
-    pub const fn to_u64(self) -> u64 { self.0 }
+    /// Returns the underlying bitmap.
+    ///
+    /// This method is intended primarily for debugging, testing,
+    /// and low-level optimizations.
+    pub const fn mask() -> u64 {
+        if WIDTH >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << WIDTH) - 1
+        }
+    }
+
+    /// Creates a new flag set from the provided raw bits.
+    ///
+    /// Any bits outside the valid range are automatically cleared.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::CronFlags;
+    /// let flags = CronFlags::new(0b1010);
+    /// ```
+    pub const fn new(bits: u64) -> Self {
+        Self(bits & Self::mask())
+    }
+
+    /// Creates an empty flag set.
+    ///
+    /// No flags are enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::CronFlags;
+    /// let flags = CronFlags::empty();
+    /// assert_eq!(flags.to_u64(), 0);
+    /// ```
+    pub const fn empty() -> Self {
+        Self::new(0)
+    }
+
+    /// Returns the bit mask for the given bit position.
+    ///
+    /// This is a convenience helper for defining compile-time flag constants.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::CronFlags;
+    /// assert_eq!(CronFlags::bit(3), 1 << 3);
+    /// ```
+    pub const fn bit(p: u32) -> u64 {
+        1u64 << p
+    }
+
+    /// Returns a new flag set with the specified bits enabled.
+    ///
+    /// This method does not modify the original value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::{CronFlags, LAST_BIT};
+    /// let flags = CronFlags::empty().with(LAST_BIT);
+    /// assert!(flags.contains(LAST_BIT));
+    /// ```
+    pub const fn with(self, mask: u64) -> Self {
+        Self::new(self.0 | mask)
+    }
+
+    /// Returns a new flag set with the specified bits cleared.
+    ///
+    /// This method does not modify the original value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::{CronFlags, LAST_BIT};
+    /// let flags = CronFlags::empty()
+    ///     .with(LAST_BIT)
+    ///     .without(LAST_BIT);
+    ///
+    /// assert!(!flags.contains(LAST_BIT));
+    /// ```
+    pub const fn without(self, mask: u64) -> Self {
+        Self::new(self.0 & !mask)
+    }
+
+    /// Returns `true` if all bits in `bit` are enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::cron::field::{CronFlags, LAST_BIT};
+    /// let flags = CronFlags::empty().with(LAST_BIT);
+    ///
+    /// assert!(flags.contains(LAST_BIT));
+    /// ```
+    pub const fn contains(self, bit: u64) -> bool {
+        (self.0 & bit) != 0
+    }
+
+    /// Returns the raw bit representation of the flag set.
+    ///
+    /// This is primarily intended for serialization, debugging,
+    /// and interoperability.
+    pub const fn to_u64(self) -> u64 {
+        self.0
+    }
 }
 
+/// Flag set used by the cron compiler and evaluator.
+///
+/// Eight bits are currently reserved for representing special cron
+/// semantics such as `L`, `W`, and `#`.
 pub type CronFlags = Flags<0, 8>;
-pub const NONE_BIT: u64 = 0;
-pub const ALL_BIT: u64 = CronFlags::bit(0);
-pub const LAST_BIT: u64 = CronFlags::bit(1);
-pub const CLOSEST_WEEKDAY_BIT: u64 = CronFlags::bit(2);
-pub const NTH_1ST_BIT: u64 = CronFlags::bit(3);
-pub const NTH_2ND_BIT: u64 = CronFlags::bit(4);
-pub const NTH_3RD_BIT: u64 = CronFlags::bit(5);
-pub const NTH_4TH_BIT: u64 = CronFlags::bit(6);
-pub const NTH_5TH_BIT: u64 = CronFlags::bit(7);
-pub const NTH_ALL: u64 = NTH_1ST_BIT | NTH_2ND_BIT | NTH_3RD_BIT | NTH_4TH_BIT | NTH_5TH_BIT;
 
+/// No flags enabled.
+pub const NONE_BIT: u64 = 0;
+
+/// Indicates that the field represents all possible values (`*`).
+pub const ALL_BIT: u64 = CronFlags::bit(0);
+
+/// Indicates use of the `L` (last) modifier.
+pub const LAST_BIT: u64 = CronFlags::bit(1);
+
+/// Indicates use of the `W` (nearest weekday) modifier.
+pub const CLOSEST_WEEKDAY_BIT: u64 = CronFlags::bit(2);
+
+/// Indicates the first occurrence of a weekday (`#1`).
+pub const NTH_1ST_BIT: u64 = CronFlags::bit(3);
+
+/// Indicates the second occurrence of a weekday (`#2`).
+pub const NTH_2ND_BIT: u64 = CronFlags::bit(4);
+
+/// Indicates the third occurrence of a weekday (`#3`).
+pub const NTH_3RD_BIT: u64 = CronFlags::bit(5);
+
+/// Indicates the fourth occurrence of a weekday (`#4`).
+pub const NTH_4TH_BIT: u64 = CronFlags::bit(6);
+
+/// Indicates the fifth occurrence of a weekday (`#5`).
+pub const NTH_5TH_BIT: u64 = CronFlags::bit(7);
+
+/// Mask containing all supported `#` occurrence flags.
+///
+/// Equivalent to the bitwise OR of
+/// [`NTH_1ST_BIT`], [`NTH_2ND_BIT`], [`NTH_3RD_BIT`],
+/// [`NTH_4TH_BIT`], and [`NTH_5TH_BIT`].
+pub const NTH_ALL: u64 = NTH_1ST_BIT 
+    | NTH_2ND_BIT 
+    | NTH_3RD_BIT 
+    | NTH_4TH_BIT 
+    | NTH_5TH_BIT;
+
+/// Maximum number of values representable by a [`BitField`].
+///
+/// This limit corresponds to the width of a `u64`.
 pub const BITFIELD_MAX_WIDTH: u32 = 64;
+
+/// Smallest supported year in cron expressions.
 pub const MIN_YEAR: u32 = 1;
+
+/// Largest supported year in cron expressions.
+///
+/// Schedules cannot generate occurrences beyond this year.
 pub const MAX_YEAR: u32 = 5000;
 
 #[cfg(test)]
@@ -428,7 +840,7 @@ mod tests {
         assert_eq!(bf.max_value(), 14);
     }
 
-        #[test]
+    #[test]
     fn pos_maps_values_correctly() {
         let bf = BitField::empty(5, 10);
 
@@ -444,7 +856,7 @@ mod tests {
         assert_eq!(bf.pos(15), None);
     }
 
-        #[test]
+    #[test]
     fn set_inside_range() {
         let mut bf = field();
 
@@ -471,7 +883,7 @@ mod tests {
         assert_eq!(bf.len(), 1);
     }
 
-        #[test]
+    #[test]
     fn clear_existing_bit() {
         let mut bf = field();
 
@@ -550,7 +962,7 @@ mod tests {
         bf.set(3);
         bf.set(10);
 
-        assert_eq!(bf.values(), vec![3,10,20]);
+        assert_eq!(bf.values(), vec![3, 10, 20]);
     }
 
     #[test]
@@ -568,7 +980,7 @@ mod tests {
 
         let values: Vec<_> = bf.iter().collect();
 
-        assert_eq!(values, vec![1,7,40]);
+        assert_eq!(values, vec![1, 7, 40]);
     }
 
     #[test]
@@ -591,7 +1003,7 @@ mod tests {
 
         a.union_inplace(&b);
 
-        assert_eq!(a.values(), vec![5,10,20]);
+        assert_eq!(a.values(), vec![5, 10, 20]);
     }
 
     #[test]
@@ -726,7 +1138,6 @@ mod tests {
         assert_eq!(bits.last_set(), Some(55));
     }
 }
-
 
 proptest! {
     #[test]

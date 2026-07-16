@@ -4,8 +4,23 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, Timelike};
 use chrono_tz::Tz;
 use proptest::prelude::*;
 
-use crate::cron::{ir::CronIr, scheduler::{field::Field, navigator::{AdvanceResult, FieldNavigator, NumericNavigator}}, timezone::resolve_local};
+use crate::cron::{
+    ir::CronIr,
+    scheduler::{
+        field::Field,
+        navigator::{AdvanceResult, FieldNavigator, NumericNavigator},
+    },
+    timezone::resolve_local,
+};
 
+/// Mutable scheduling state.
+///
+/// Candidate is advanced field-by-field until every rule
+/// matches.
+///
+/// It never stores timezone information.
+///
+/// Timezone resolution happens only after all fields match.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Candidate {
     pub year: i32,
@@ -18,14 +33,7 @@ pub struct Candidate {
 }
 
 impl Candidate {
-    pub fn new(
-        year: i32,
-        month: u32,
-        day: u32,
-        hour: u32,
-        minute: u32,
-        second: u32,
-    ) ->Self {
+    pub fn new(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> Self {
         Self {
             year,
             month,
@@ -44,9 +52,7 @@ impl Candidate {
         *self = Candidate::from_naive(naive);
     }
 
-    pub fn from_datetime(
-        dt: DateTime<Tz>,
-    ) -> Self {
+    pub fn from_datetime(dt: DateTime<Tz>) -> Self {
         Self {
             year: dt.year(),
             month: dt.month(),
@@ -57,9 +63,7 @@ impl Candidate {
         }
     }
 
-    pub fn from_naive(
-        naive: NaiveDateTime,
-    ) -> Self {
+    pub fn from_naive(naive: NaiveDateTime) -> Self {
         Self {
             year: naive.year(),
             month: naive.month(),
@@ -71,32 +75,17 @@ impl Candidate {
     }
 
     pub fn to_naive(self) -> Option<NaiveDateTime> {
-        let date = NaiveDate::from_ymd_opt(
-            self.year, 
-            self.month, 
-            self.day,
-        )?;
+        let date = NaiveDate::from_ymd_opt(self.year, self.month, self.day)?;
 
-        date.and_hms_opt(
-            self.hour,
-            self.minute,
-            self.second,
-        )
+        date.and_hms_opt(self.hour, self.minute, self.second)
     }
 
-    pub fn to_datetime(
-        &self,
-        tz: &Tz,
-    ) -> Option<DateTime<Tz>> {
+    pub fn to_datetime(&self, tz: &Tz) -> Option<DateTime<Tz>> {
         let naive = self.to_naive()?;
         resolve_local(tz, naive)
     }
 
-    pub fn reset_after(
-        &mut self,
-        field: Field,
-        ir: &CronIr,
-    ) {
+    pub fn reset_after(&mut self, field: Field, ir: &CronIr) {
         match field {
             Field::Year => {
                 self.month = ir.min_month();
@@ -128,19 +117,13 @@ impl Candidate {
         }
     }
 
-    fn reset_time(
-        &mut self,
-        ir: &CronIr,
-    ) {
+    fn reset_time(&mut self, ir: &CronIr) {
         self.hour = ir.min_hour();
         self.minute = ir.min_minute();
         self.second = ir.min_second();
     }
 
-    pub fn get(
-        &self,
-        field: Field,
-    ) -> u32 {
+    pub fn get(&self, field: Field) -> u32 {
         match field {
             Field::Year => self.year as u32,
             Field::Month => self.month,
@@ -151,11 +134,7 @@ impl Candidate {
         }
     }
 
-    pub fn set(
-        &mut self,
-        field: Field,
-        value: u32,
-    ) {
+    pub fn set(&mut self, field: Field, value: u32) {
         match field {
             Field::Year => self.year = value as i32,
             Field::Month => self.month = value,
@@ -167,32 +146,21 @@ impl Candidate {
     }
 
     /// Advances the parent field.
-    pub fn advance_parent(
-        &mut self,
-        field: Field,
-    ) {
+    pub fn advance_parent(&mut self, field: Field) {
         match field {
             Field::Year => {
                 return;
             }
 
-            Field::Month => {
-                self.year += 1
-            }
+            Field::Month => self.year += 1,
 
             Field::Day => self.next_month(),
 
-            Field::Hour => {
-                self.map_datetime(|dt| dt + Duration::days(1))
-            }
+            Field::Hour => self.map_datetime(|dt| dt + Duration::days(1)),
 
-            Field::Minute => {
-                self.map_datetime(|dt| dt + Duration::hours(1))
-            }
+            Field::Minute => self.map_datetime(|dt| dt + Duration::hours(1)),
 
-            Field::Second => {
-                self.map_datetime(|dt| dt + Duration::minutes(1))
-            }
+            Field::Second => self.map_datetime(|dt| dt + Duration::minutes(1)),
         }
     }
 
@@ -204,12 +172,8 @@ impl Candidate {
         self.map_datetime(|dt| dt + Duration::seconds(1));
     }
 
-    fn map_datetime(
-        &mut self,
-        f: impl FnOnce(NaiveDateTime) -> NaiveDateTime,
-    ) {
-        let naive = self.to_naive()
-            .expect("candidate should always be valid");
+    fn map_datetime(&mut self, f: impl FnOnce(NaiveDateTime) -> NaiveDateTime) {
+        let naive = self.to_naive().expect("candidate should always be valid");
 
         *self = Candidate::from_naive(f(naive))
     }
@@ -225,19 +189,13 @@ impl Candidate {
                     .with_month(1)
                     .unwrap()
             } else {
-                first
-                    .with_month(first.month() + 1)
-                    .unwrap()
+                first.with_month(first.month() + 1).unwrap()
             }
         });
     }
 }
 
-pub fn advance_numeric(
-    candidate: &mut Candidate,
-    ir: &CronIr,
-    field: Field,
-) -> bool {
+pub fn advance_numeric(candidate: &mut Candidate, ir: &CronIr, field: Field) -> bool {
     let Some(matcher) = ir.matcher(field) else {
         panic!("advance_numeric called for non-numeric field")
     };
@@ -269,25 +227,19 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::cron::{
-        field::BitField, ir::{CronIr, DayRule, FieldMatcher}, scheduler::field::Field,
+        field::BitField,
+        ir::{CronIr, DayRule, FieldMatcher},
+        scheduler::field::Field,
     };
 
-    fn matcher(
-        value: u32,
-        min: u32,
-        max: u32,
-    ) ->FieldMatcher {
+    fn matcher(value: u32, min: u32, max: u32) -> FieldMatcher {
         let mut bf = BitField::empty(min, max - min + 1);
         bf.set(value);
 
         FieldMatcher::from(bf)
     }
 
-    fn matcher_values(
-        values: &[u32],
-        min: u32,
-        max: u32,
-    ) ->FieldMatcher {
+    fn matcher_values(values: &[u32], min: u32, max: u32) -> FieldMatcher {
         let mut bf = BitField::empty(min, max - min + 1);
 
         for &value in values {
@@ -334,14 +286,7 @@ mod tests {
 
     #[test]
     fn to_naive_round_trip() {
-        let original = Candidate::new(
-            2025,
-            9,
-            8,
-            15,
-            20,
-            33,
-        );
+        let original = Candidate::new(2025, 9, 8, 15, 20, 33);
 
         let naive = original.to_naive().unwrap();
 
@@ -352,19 +297,12 @@ mod tests {
 
     #[test]
     fn invalid_date_returns_none() {
-        let c = Candidate::new(
-            2025,
-            2,
-            31,
-            0,
-            0,
-            0,
-        );
+        let c = Candidate::new(2025, 2, 31, 0, 0, 0);
 
         assert!(c.to_naive().is_none());
     }
 
-        #[test]
+    #[test]
     fn get_returns_correct_values() {
         let c = Candidate {
             year: 2030,
@@ -383,7 +321,7 @@ mod tests {
         assert_eq!(c.get(Field::Second), 20);
     }
 
-        #[test]
+    #[test]
     fn set_updates_field() {
         let mut c = Candidate {
             year: 2025,
@@ -505,7 +443,7 @@ mod tests {
         assert_eq!(c.second, 5);
     }
 
-        #[test]
+    #[test]
     fn reset_after_second_does_nothing() {
         let mut c = Candidate {
             year: 2025,
@@ -524,7 +462,7 @@ mod tests {
         assert_eq!(c, before);
     }
 
-        #[test]
+    #[test]
     fn map_datetime_can_add_day() {
         let mut c = Candidate {
             year: 2025,
@@ -804,11 +742,7 @@ mod tests {
             second: 5,
         };
 
-        assert!(!advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Second,
-        ));
+        assert!(!advance_numeric(&mut candidate, &ir, Field::Second,));
     }
 
     #[test]
@@ -816,19 +750,15 @@ mod tests {
         let ir = ir();
 
         let mut candidate = Candidate {
-            year: 2025, 
-            month: 2, 
+            year: 2025,
+            month: 2,
             day: 10,
-            hour: 3, 
-            minute: 10, 
+            hour: 3,
+            minute: 10,
             second: 50,
         };
 
-        assert!(!advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Minute,
-        ));
+        assert!(!advance_numeric(&mut candidate, &ir, Field::Minute,));
 
         assert_eq!(candidate.minute, 10);
     }
@@ -837,16 +767,9 @@ mod tests {
     fn advance_hour_unchanged() {
         let ir = ir();
 
-        let mut candidate = Candidate::new(
-            2025, 2, 10,
-            3, 15, 50,
-        );
+        let mut candidate = Candidate::new(2025, 2, 10, 3, 15, 50);
 
-        assert!(!advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Hour,
-        ));
+        assert!(!advance_numeric(&mut candidate, &ir, Field::Hour,));
 
         assert_eq!(candidate.hour, 3);
     }
@@ -857,16 +780,9 @@ mod tests {
 
         ir.second = matcher_values(&[5, 20, 40], 0, 59);
 
-        let mut candidate = Candidate::new(
-            2025, 2, 10,
-            3, 10, 17,
-        );
+        let mut candidate = Candidate::new(2025, 2, 10, 3, 10, 17);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Second,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Second,));
 
         assert_eq!(candidate.second, 20);
     }
@@ -877,16 +793,9 @@ mod tests {
 
         ir.minute = matcher_values(&[10, 20, 45], 0, 59);
 
-        let mut candidate = Candidate::new(
-            2025, 2, 10,
-            3, 17, 55,
-        );
+        let mut candidate = Candidate::new(2025, 2, 10, 3, 17, 55);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Minute,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Minute,));
 
         assert_eq!(candidate.minute, 20);
 
@@ -900,16 +809,9 @@ mod tests {
 
         ir.hour = matcher_values(&[3, 8, 16], 0, 23);
 
-        let mut candidate = Candidate::new(
-            2025, 2, 10,
-            5, 30, 40,
-        );
+        let mut candidate = Candidate::new(2025, 2, 10, 5, 30, 40);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Hour,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Hour,));
 
         assert_eq!(candidate.hour, 8);
 
@@ -923,16 +825,9 @@ mod tests {
 
         ir.month = matcher_values(&[2, 5, 9], 1, 12);
 
-        let mut candidate = Candidate::new(
-            2025, 3, 17,
-            8, 20, 30,
-        );
+        let mut candidate = Candidate::new(2025, 3, 17, 8, 20, 30);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Month,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Month,));
 
         assert_eq!(candidate.month, 5);
 
@@ -947,20 +842,11 @@ mod tests {
     fn advance_year_changed() {
         let mut ir = ir();
 
-        ir.year = Some(
-            matcher_values(&[2025, 2027], 2025, 2030),
-        );
+        ir.year = Some(matcher_values(&[2025, 2027], 2025, 2030));
 
-        let mut candidate = Candidate::new(
-            2026, 8, 20,
-            9, 40, 50,
-        );
+        let mut candidate = Candidate::new(2026, 8, 20, 9, 40, 50);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Year,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Year,));
 
         assert_eq!(candidate.year, 2027);
 
@@ -976,16 +862,9 @@ mod tests {
     fn advance_second_wraps() {
         let ir = ir();
 
-        let mut candidate = Candidate::new(
-            2025, 2, 10,
-            3, 10, 59,
-        );
+        let mut candidate = Candidate::new(2025, 2, 10, 3, 10, 59);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Second,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Second,));
 
         assert_eq!(candidate.minute, 11);
         assert_eq!(candidate.second, 5);
@@ -995,16 +874,9 @@ mod tests {
     fn advance_minute_wraps() {
         let ir = ir();
 
-        let mut candidate = Candidate::new(
-            2025, 2, 10,
-            3, 59, 20,
-        );
+        let mut candidate = Candidate::new(2025, 2, 10, 3, 59, 20);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Minute,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Minute,));
 
         assert_eq!(candidate.hour, 4);
         assert_eq!(candidate.minute, 10);
@@ -1015,16 +887,9 @@ mod tests {
     fn advance_hour_wraps() {
         let ir = ir();
 
-        let mut candidate = Candidate::new(
-            2025, 2, 10,
-            23, 40, 50,
-        );
+        let mut candidate = Candidate::new(2025, 2, 10, 23, 40, 50);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Hour,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Hour,));
 
         assert_eq!(candidate.day, 11);
 
@@ -1038,16 +903,9 @@ mod tests {
     fn advance_month_wraps() {
         let ir = ir();
 
-        let mut candidate = Candidate::new(
-            2025, 12, 25,
-            12, 20, 30,
-        );
+        let mut candidate = Candidate::new(2025, 12, 25, 12, 20, 30);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Month,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Month,));
 
         assert_eq!(candidate.year, 2026);
         assert_eq!(candidate.month, 2);
@@ -1063,20 +921,11 @@ mod tests {
     fn advance_year_wraps_to_minimum() {
         let mut ir = ir();
 
-        ir.year = Some(
-            matcher_values(&[2025, 2027], 2025, 2030),
-        );
+        ir.year = Some(matcher_values(&[2025, 2027], 2025, 2030));
 
-        let mut candidate = Candidate::new(
-            2028, 8, 20,
-            9, 40, 50,
-        );
+        let mut candidate = Candidate::new(2028, 8, 20, 9, 40, 50);
 
-        assert!(advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Year,
-        ));
+        assert!(advance_numeric(&mut candidate, &ir, Field::Year,));
 
         assert_eq!(candidate.year, 2025);
 
@@ -1093,16 +942,9 @@ mod tests {
     fn advance_day_panics() {
         let ir = ir();
 
-        let mut candidate = Candidate::new(
-            2025, 2, 10,
-            3, 10, 5,
-        );
+        let mut candidate = Candidate::new(2025, 2, 10, 3, 10, 5);
 
-        advance_numeric(
-            &mut candidate,
-            &ir,
-            Field::Day,
-        );
+        advance_numeric(&mut candidate, &ir, Field::Day);
     }
 }
 
@@ -1135,24 +977,3 @@ proptest! {
         prop_assert!(after > before);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,10 +1,21 @@
+//! Calendar computations independent of chrono.
+//!
+//! Implements:
+//!
+//! - leap year detection
+//! - weekday calculation
+//! - month lengths
+//! - nearest weekday (`W`)
+//! - last weekday (`5L`)
+//! - nth weekday (`#`)
+//! - last business day (`LW`)
+
 use chrono::{DateTime, Datelike, TimeZone};
 use proptest::prelude::*;
 
 use crate::cron::scheduler::candidate::Candidate;
 
-const MONTH_OFFSETS: [i32; 12] =
-    [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+const MONTH_OFFSETS: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
 
 const MONTH_LENGTHS: [[u8; 12]; 2] = [
     [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
@@ -67,7 +78,7 @@ impl TryFrom<u8> for Weekday {
         } else {
             Err("weekday must be in range 0..=6")
         }
-    } 
+    }
 }
 
 impl TryFrom<i32> for Weekday {
@@ -108,63 +119,41 @@ pub struct Calendar {
 
 impl Calendar {
     #[inline]
-    pub const fn new(
-        year: i32,
-        month: u32,
-        day: u32,
-    ) -> Self {
-        Self {
-            year,
-            month,
-            day,
-        }
+    pub const fn new(year: i32, month: u32, day: u32) -> Self {
+        Self { year, month, day }
     }
 
     #[inline]
     pub fn weekday(&self) -> Weekday {
-        Self::week_day(
-            self.year,
-            self.month,
-            self.day,
-        )
+        Self::week_day(self.year, self.month, self.day)
     }
 
     #[inline]
     pub fn is_last_day(&self) -> bool {
-        self.day == Self::days_in_month(
-            self.year,
-            self.month,
-        )
+        self.day == Self::days_in_month(self.year, self.month)
     }
 
     /// Zeller's congruence variant for day of week (0 = Sunday)
-    pub fn week_day(
-        year: i32,
-        month: u32,
-        day: u32,
-    ) -> Weekday {
+    pub fn week_day(year: i32, month: u32, day: u32) -> Weekday {
         let mut year = year;
 
         if month < 3 {
             year -= 1;
         }
 
-        let weekday =
-            (year
-                + year / 4
-                - year / 100
-                + year / 400
-                + MONTH_OFFSETS[(month - 1) as usize]
-                + day as i32)
-                % 7;
+        let weekday = (year + year / 4 - year / 100
+            + year / 400
+            + MONTH_OFFSETS[(month - 1) as usize]
+            + day as i32)
+            % 7;
 
         Weekday::new(weekday as u8)
     }
 
     /// Quartz rules for `W`
-    /// 
+    ///
     /// Given `N W`:
-    /// 
+    ///
     /// - If `N` is Monday–Friday → use `N`.
     /// - If `N` is Saturday:
     ///     - Normally → Friday (`N - 1`)
@@ -175,11 +164,7 @@ impl Calendar {
     /// The important rule is:
     ///
     /// Never cross the month boundary.
-    pub fn nearest_weekday(
-        year: i32,
-        month: u32,
-        day: u32,
-    ) -> u32 {
+    pub fn nearest_weekday(year: i32, month: u32, day: u32) -> u32 {
         let max = Self::days_in_month(year, month);
 
         debug_assert!(day >= 1);
@@ -209,23 +194,14 @@ impl Calendar {
             _ => unreachable!(),
         }
     }
- 
-    pub fn nth_weekday(
-        year: i32,
-        month: u32,
-        weekday: u32,
-        nth: u32,
-    ) -> Option<u32> {
+
+    pub fn nth_weekday(year: i32, month: u32, weekday: u32, nth: u32) -> Option<u32> {
         let mut count = 0;
 
         let max = Self::days_in_month(year, month);
 
         for day in 1..=max {
-            let dow = Self::week_day(
-                year,
-                month,
-                day,
-            );
+            let dow = Self::week_day(year, month, day);
 
             if dow.0 as u32 == weekday {
                 count += 1;
@@ -239,11 +215,7 @@ impl Calendar {
         None
     }
 
-    pub fn last_weekday(
-        year: i32,
-        month: u32,
-        weekday: Weekday,
-    ) -> u32 {
+    pub fn last_weekday(year: i32, month: u32, weekday: Weekday) -> u32 {
         let max = Self::days_in_month(year, month);
 
         for day in (1..=max).rev() {
@@ -265,28 +237,19 @@ impl Calendar {
     }
 
     #[inline]
-    pub fn days_in_month(
-        year: i32,
-        month: u32,
-    ) -> u32 {
-        MONTH_LENGTHS[Self::is_leap_year(year) as usize]
-            [(month - 1) as usize] as u32
+    pub fn days_in_month(year: i32, month: u32) -> u32 {
+        MONTH_LENGTHS[Self::is_leap_year(year) as usize][(month - 1) as usize] as u32
     }
 
     #[inline]
     pub const fn is_leap_year(year: i32) -> bool {
-        (year % 4 == 0 && year % 100 != 0)
-            || (year % 400 == 0)
+        (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
     }
 }
 
 impl From<&Candidate> for Calendar {
     fn from(candidate: &Candidate) -> Self {
-        Self::new(
-            candidate.year,
-            candidate.month,
-            candidate.day,
-        )
+        Self::new(candidate.year, candidate.month, candidate.day)
     }
 }
 
@@ -295,11 +258,7 @@ where
     Tz: TimeZone,
 {
     fn from(dt: &DateTime<Tz>) -> Self {
-        Self::new(
-            dt.year(),
-            dt.month(),
-            dt.day(),
-        )
+        Self::new(dt.year(), dt.month(), dt.day())
     }
 }
 
@@ -318,37 +277,25 @@ mod tests {
     #[test]
     fn weekday_epoch() {
         // 1970-01-01 = Thursday
-        assert_eq!(
-            Calendar::week_day(1970, 1, 1),
-            Weekday::new(4),
-        );
+        assert_eq!(Calendar::week_day(1970, 1, 1), Weekday::new(4),);
     }
 
     #[test]
     fn weekday_y2k() {
         // 2000-01-01 = Saturday
-        assert_eq!(
-            Calendar::week_day(2000, 1, 1), 
-            Weekday::new(6)
-        );
+        assert_eq!(Calendar::week_day(2000, 1, 1), Weekday::new(6));
     }
 
     #[test]
     fn weekday_leap_day() {
         // 2024-02-29 = Thursday
-        assert_eq!(
-            Calendar::week_day(2024, 2, 29), 
-            Weekday::new(4)
-        );
+        assert_eq!(Calendar::week_day(2024, 2, 29), Weekday::new(4));
     }
 
     #[test]
     fn weekday_christmas_2025() {
         // Thursday
-        assert_eq!(
-            Calendar::week_day(2025, 12, 25), 
-            Weekday::new(4)
-        );
+        assert_eq!(Calendar::week_day(2025, 12, 25), Weekday::new(4));
     }
 
     #[test]
@@ -389,34 +336,22 @@ mod tests {
     // -------------------------------------------------------------------------
     #[test]
     fn january_has_31_days() {
-        assert_eq!(
-            Calendar::days_in_month(2025, 1),
-            31,
-        );
+        assert_eq!(Calendar::days_in_month(2025, 1), 31,);
     }
 
     #[test]
     fn april_has_30_days() {
-        assert_eq!(
-            Calendar::days_in_month(2025, 4),
-            30,
-        );
+        assert_eq!(Calendar::days_in_month(2025, 4), 30,);
     }
 
     #[test]
     fn february_normal_year() {
-        assert_eq!(
-            Calendar::days_in_month(2025, 2),
-            28,
-        );
+        assert_eq!(Calendar::days_in_month(2025, 2), 28,);
     }
 
     #[test]
     fn february_leap_year() {
-        assert_eq!(
-            Calendar::days_in_month(2024, 2),
-            29,
-        );
+        assert_eq!(Calendar::days_in_month(2024, 2), 29,);
     }
 
     // -------------------------------------------------------------------------
@@ -425,14 +360,7 @@ mod tests {
     #[test]
     fn nearest_weekday_returns_same_day() {
         // Already weekday
-        assert_eq!(
-            Calendar::nearest_weekday(
-                2025,
-                7,
-                16,
-            ),
-            16,
-        );
+        assert_eq!(Calendar::nearest_weekday(2025, 7, 16,), 16,);
     }
 
     #[test]
@@ -440,14 +368,7 @@ mod tests {
         /*12(Sat)
         ↓
         11(Fri)*/
-        assert_eq!(
-            Calendar::nearest_weekday(
-                2026,
-                9,
-                12,
-            ),
-            11,
-        );
+        assert_eq!(Calendar::nearest_weekday(2026, 9, 12,), 11,);
     }
 
     #[test]
@@ -457,14 +378,7 @@ mod tests {
         ↓
         14(Mon)
         */
-        assert_eq!(
-            Calendar::nearest_weekday(
-                2026,
-                9,
-                13,
-            ),
-            14,
-        );
+        assert_eq!(Calendar::nearest_weekday(2026, 9, 13,), 14,);
     }
 
     #[test]
@@ -473,14 +387,7 @@ mod tests {
         1 Sat
         ↓
         2 Mon*/
-        assert_eq!(
-            Calendar::nearest_weekday(
-                2026,
-                8,
-                1,
-            ),
-            3,
-        );
+        assert_eq!(Calendar::nearest_weekday(2026, 8, 1,), 3,);
     }
 
     #[test]
@@ -490,14 +397,7 @@ mod tests {
         ↓
         30 Fri
         */
-        assert_eq!(
-            Calendar::nearest_weekday(
-                2021,
-                1,
-                31,
-            ),
-            29,
-        );
+        assert_eq!(Calendar::nearest_weekday(2021, 1, 31,), 29,);
     }
 
     // -------------------------------------------------------------------------
@@ -505,67 +405,27 @@ mod tests {
     // -------------------------------------------------------------------------
     #[test]
     fn first_monday() {
-        assert_eq!(
-            Calendar::nth_weekday(
-                2025,
-                7,
-                1,
-                1,
-            ),
-            Some(7),
-        );
+        assert_eq!(Calendar::nth_weekday(2025, 7, 1, 1,), Some(7),);
     }
 
     #[test]
     fn second_monday() {
-        assert_eq!(
-            Calendar::nth_weekday(
-                2025,
-                7,
-                1,
-                2,
-            ),
-            Some(14),
-        );
+        assert_eq!(Calendar::nth_weekday(2025, 7, 1, 2,), Some(14),);
     }
 
     #[test]
     fn third_monday() {
-        assert_eq!(
-            Calendar::nth_weekday(
-                2025,
-                7,
-                1,
-                3,
-            ),
-            Some(21),
-        );
+        assert_eq!(Calendar::nth_weekday(2025, 7, 1, 3,), Some(21),);
     }
 
     #[test]
     fn fourth_monday() {
-        assert_eq!(
-            Calendar::nth_weekday(
-                2025,
-                7,
-                1,
-                4,
-            ),
-            Some(28),
-        );
+        assert_eq!(Calendar::nth_weekday(2025, 7, 1, 4,), Some(28),);
     }
 
     #[test]
     fn fifth_monday_missing() {
-        assert_eq!(
-            Calendar::nth_weekday(
-                2025,
-                2,
-                1,
-                5,
-            ),
-            None,
-        );
+        assert_eq!(Calendar::nth_weekday(2025, 2, 1, 5,), None,);
     }
 
     // -------------------------------------------------------------------------
@@ -574,138 +434,88 @@ mod tests {
     #[test]
     fn last_sunday_january_2025() {
         // Sundays: 5,12,19,26
-        assert_eq!(
-            Calendar::last_weekday(2025, 1, Weekday(0)),
-            26,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 1, Weekday(0)), 26,);
     }
 
     #[test]
     fn last_monday_january_2025() {
         // Mondays: 6,13,20,27
-        assert_eq!(
-            Calendar::last_weekday(2025, 1, Weekday(1)),
-            27,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 1, Weekday(1)), 27,);
     }
 
     #[test]
     fn last_tuesday_january_2025() {
-        assert_eq!(
-            Calendar::last_weekday(2025, 1, Weekday(2)),
-            28,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 1, Weekday(2)), 28,);
     }
 
     #[test]
     fn last_wednesday_january_2025() {
-        assert_eq!(
-            Calendar::last_weekday(2025, 1, Weekday(3)),
-            29,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 1, Weekday(3)), 29,);
     }
 
     #[test]
     fn last_thursday_january_2025() {
-        assert_eq!(
-            Calendar::last_weekday(2025, 1, Weekday(4)),
-            30,
-        );
-}
+        assert_eq!(Calendar::last_weekday(2025, 1, Weekday(4)), 30,);
+    }
 
     #[test]
     fn last_friday_january_2025() {
-        assert_eq!(
-            Calendar::last_weekday(2025, 1, Weekday(5)),
-            31,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 1, Weekday(5)), 31,);
     }
 
     #[test]
     fn last_saturday_january_2025() {
-        assert_eq!(
-            Calendar::last_weekday(2025, 1, Weekday(6)),
-            25,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 1, Weekday(6)), 25,);
     }
 
     #[test]
     fn last_thursday_february_leap_year() {
         // Feb 2024 ends on Thursday (29th)
-        assert_eq!(
-            Calendar::last_weekday(2024, 2, Weekday(4)),
-            29,
-        );
+        assert_eq!(Calendar::last_weekday(2024, 2, Weekday(4)), 29,);
     }
 
     #[test]
     fn last_wednesday_february_leap_year() {
-        assert_eq!(
-            Calendar::last_weekday(2024, 2, Weekday(3)),
-            28,
-        );
+        assert_eq!(Calendar::last_weekday(2024, 2, Weekday(3)), 28,);
     }
 
     #[test]
     fn last_friday_february_normal_year() {
         // Feb 2025 Fridays: 7,14,21,28
-        assert_eq!(
-            Calendar::last_weekday(2025, 2, Weekday(5)),
-            28,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 2, Weekday(5)), 28,);
     }
 
     #[test]
     fn last_saturday_february_normal_year() {
         // Saturdays: 1,8,15,22
-        assert_eq!(
-            Calendar::last_weekday(2025, 2, Weekday(6)),
-            22,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 2, Weekday(6)), 22,);
     }
 
     #[test]
     fn last_wednesday_april_2025() {
         // Wednesdays: 2,9,16,23,30
-        assert_eq!(
-            Calendar::last_weekday(2025, 4, Weekday(3)),
-            30,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 4, Weekday(3)), 30,);
     }
 
     #[test]
     fn last_sunday_april_2025() {
         // Sundays: 6,13,20,27
-        assert_eq!(
-            Calendar::last_weekday(2025, 4, Weekday(0)),
-            27,
-        );
+        assert_eq!(Calendar::last_weekday(2025, 4, Weekday(0)), 27,);
     }
 
     #[test]
     fn last_weekday_is_always_correct_weekday() {
         for weekday in 0..7 {
-            let day = Calendar::last_weekday(
-                2025,
-                7,
-                Weekday::try_from(weekday).unwrap(),
-            );
+            let day = Calendar::last_weekday(2025, 7, Weekday::try_from(weekday).unwrap());
 
-            assert_eq!(
-                Calendar::week_day(2025, 7, day).0,
-                weekday,
-            );
+            assert_eq!(Calendar::week_day(2025, 7, day).0, weekday,);
         }
     }
 
     #[test]
     fn last_weekday_is_within_month() {
         for weekday in 0..7 {
-            let day = Calendar::last_weekday(
-                2025,
-                12,
-                Weekday::try_from(weekday).unwrap(),
-            );
+            let day = Calendar::last_weekday(2025, 12, Weekday::try_from(weekday).unwrap());
 
             assert!(day >= 1);
             assert!(day <= 31);
@@ -715,19 +525,12 @@ mod tests {
     #[test]
     fn returned_day_is_the_last_occurrence() {
         for weekday in 0..7 {
-            let day = Calendar::last_weekday(
-                2025,
-                5,
-                Weekday::try_from(weekday).unwrap(),
-            );
+            let day = Calendar::last_weekday(2025, 5, Weekday::try_from(weekday).unwrap());
 
             let max = Calendar::days_in_month(2025, 5);
 
             for later in (day + 1)..=max {
-                assert_ne!(
-                    Calendar::week_day(2025, 5, later).0,
-                    weekday,
-                );
+                assert_ne!(Calendar::week_day(2025, 5, later).0, weekday,);
             }
         }
     }
@@ -737,11 +540,8 @@ mod tests {
         for year in 1990..=2035 {
             for month in 1..=12 {
                 for weekday in 0..=6 {
-                    let day = Calendar::last_weekday(
-                        year, 
-                        month, 
-                        Weekday::try_from(weekday).unwrap(),
-                    );
+                    let day =
+                        Calendar::last_weekday(year, month, Weekday::try_from(weekday).unwrap());
 
                     assert!(day >= 1);
                     assert!(day <= Calendar::days_in_month(year, month));
@@ -755,38 +555,23 @@ mod tests {
     // -------------------------------------------------------------------------
     #[test]
     fn calendar_is_last_day_true() {
-        let cal = Calendar::new(
-            2025,
-            1,
-            31,
-        );
+        let cal = Calendar::new(2025, 1, 31);
 
         assert!(cal.is_last_day());
     }
 
     #[test]
     fn calendar_is_last_day_false() {
-        let cal = Calendar::new(
-            2025,
-            1,
-            30,
-        );
+        let cal = Calendar::new(2025, 1, 30);
 
         assert!(!cal.is_last_day());
     }
 
     #[test]
     fn calendar_weekday_matches_static_function() {
-        let cal = Calendar::new(
-            2025,
-            7,
-            20,
-        );
+        let cal = Calendar::new(2025, 7, 20);
 
-        assert_eq!(
-            cal.weekday(),
-            Calendar::week_day(2025, 7, 20),
-        );
+        assert_eq!(cal.weekday(), Calendar::week_day(2025, 7, 20),);
     }
 }
 

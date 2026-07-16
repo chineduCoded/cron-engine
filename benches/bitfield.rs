@@ -1,33 +1,27 @@
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use cron_engine::cron::field;
 
 fn bitfield(c: &mut Criterion) {
     let bf = field::BitField::full(0, 64);
 
-    c.bench_function(
-        "bitfield contains",
-        |b| {
-            b.iter(|| {
-                bf.contains(
-                    black_box(37),
-                );
-            });
-        }
-    );
+    let mut group = c.benchmark_group("bitfield");
 
-    c.bench_function(
-        "bitfield next",
-        |b| {
-            b.iter(|| {
-                bf.next_from(
-                    black_box(23),
-                );
-            });
-        }
-    );
+    group.bench_function("contains", |b| {
+        b.iter(|| {
+            bf.contains(black_box(37));
+        });
+    });
+
+    group.bench_function("next", |b| {
+        b.iter(|| {
+            bf.next_from(black_box(23));
+        });
+    });
+
+    group.finish();
 }
 
 criterion_group!(benches, bitfield);

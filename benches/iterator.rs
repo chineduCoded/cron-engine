@@ -1,26 +1,14 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use chrono::TimeZone;
 use chrono_tz::UTC;
 
 use cron_engine::cron::scheduler::scheduler;
 
-
 fn iterator(c: &mut Criterion) {
-    let schedule =
-        scheduler::CronSchedule::parse("0 * * * * *")
-            .unwrap();
+    let schedule = scheduler::CronSchedule::parse("0 * * * * *").unwrap();
 
-    let start = UTC
-        .with_ymd_and_hms(
-            2025,
-            1,
-            1,
-            0,
-            0,
-            0,
-        )
-        .unwrap();
+    let start = UTC.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
 
     let mut group = c.benchmark_group("iterator");
 
