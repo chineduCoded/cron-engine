@@ -42,7 +42,6 @@
 //!
 //! ```text
 //! Expression
-//!     │
 //!     ▼
 //! Parser
 //!     ▼

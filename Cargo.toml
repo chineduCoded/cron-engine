@@ -2,6 +2,8 @@
 name = "cron-engine"
 version = "0.1.0"
 edition = "2024"
+authors = ["Chinedu Elijah Okoronkwo"]
+repository = "https://github.com/chineduCoded/cron-engine"
 
 [dependencies]
 async-trait = "0.1.89"
