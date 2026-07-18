@@ -143,7 +143,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let bf = BitField::full(0, 60);
     ///
     /// assert!(bf.contains(15));
@@ -157,7 +157,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let mut bf = BitField::empty(1, 5);
     /// bf.set(2);
     /// bf.set(4);
@@ -192,7 +192,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let bf = BitField::full(0, 60);
     /// assert!(bf.is_full());
     /// ```
@@ -257,7 +257,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let bf = BitField::empty(10, 5);
     ///
     /// assert_eq!(bf.pos(10), Some(0));
@@ -284,7 +284,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let mut bf = BitField::empty(1, 31);
     /// bf.set(10);
     /// bf.set(20);
@@ -309,7 +309,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let mut bf = BitField::empty(1, 31);
     /// bf.set(10);
     /// bf.set(20);
@@ -343,7 +343,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let mut bf = BitField::empty(0, 60);
     /// bf.set(5);
     /// bf.set(20);
@@ -443,7 +443,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let mut bf = BitField::empty(1, 31);
     /// bf.set(15);
     ///
@@ -476,7 +476,7 @@ impl BitField {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::BitField;
+    /// # use cron_engine::BitField;
     /// let mut bf = BitField::empty(1, 10);
     /// bf.set(2);
     /// bf.set(5);
@@ -637,7 +637,7 @@ impl<const OFFSET: u32, const WIDTH: u32> Flags<OFFSET, WIDTH> {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::CronFlags;
+    /// # use cron_engine::CronFlags;
     /// let flags = CronFlags::new(0b1010);
     /// ```
     pub const fn new(bits: u64) -> Self {
@@ -651,7 +651,7 @@ impl<const OFFSET: u32, const WIDTH: u32> Flags<OFFSET, WIDTH> {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::CronFlags;
+    /// # use cron_engine::CronFlags;
     /// let flags = CronFlags::empty();
     /// assert_eq!(flags.to_u64(), 0);
     /// ```
@@ -666,7 +666,7 @@ impl<const OFFSET: u32, const WIDTH: u32> Flags<OFFSET, WIDTH> {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::CronFlags;
+    /// # use cron_engine::CronFlags;
     /// assert_eq!(CronFlags::bit(3), 1 << 3);
     /// ```
     pub const fn bit(p: u32) -> u64 {
@@ -680,7 +680,7 @@ impl<const OFFSET: u32, const WIDTH: u32> Flags<OFFSET, WIDTH> {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::{CronFlags, LAST_BIT};
+    /// # use cron_engine::{CronFlags, LAST_BIT};
     /// let flags = CronFlags::empty().with(LAST_BIT);
     /// assert!(flags.contains(LAST_BIT));
     /// ```
@@ -695,7 +695,7 @@ impl<const OFFSET: u32, const WIDTH: u32> Flags<OFFSET, WIDTH> {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::{CronFlags, LAST_BIT};
+    /// # use cron_engine::{CronFlags, LAST_BIT};
     /// let flags = CronFlags::empty()
     ///     .with(LAST_BIT)
     ///     .without(LAST_BIT);
@@ -711,7 +711,7 @@ impl<const OFFSET: u32, const WIDTH: u32> Flags<OFFSET, WIDTH> {
     /// # Examples
     ///
     /// ```
-    /// # use cron_engine::cron::field::{CronFlags, LAST_BIT};
+    /// # use cron_engine::{CronFlags, LAST_BIT};
     /// let flags = CronFlags::empty().with(LAST_BIT);
     ///
     /// assert!(flags.contains(LAST_BIT));

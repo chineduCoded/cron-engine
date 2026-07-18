@@ -1,15 +1,11 @@
-//! A production-ready cron expression parser and scheduler.
+//! Core implementation of the cron scheduler.
 //!
-//! `cron-engine` provides:
+//! This module contains the parser, compiler, intermediate representation,
+//! evaluator, and scheduler used by `cron-engine`.
 //!
-//! - Quartz-style cron expression parsing
-//! - Efficient bitset-based schedule evaluation
-//! - Time zone aware scheduling
-//! - DST-safe occurrence calculation
-//! - Support for advanced day rules (`L`, `W`, `LW`, `#`)
-//! - Forward and backward schedule navigation
-//!
-//! The primary entry point is [`CronSchedule`].
+//! Most users should interact only with [`CronSchedule`] and [`CronError`].
+//! The remaining modules are primarily intended for library internals or
+//! advanced use cases.
 
 /// Abstract syntax tree for parsed cron expressions.
 pub mod ast;
@@ -41,8 +37,10 @@ pub mod scheduler;
 /// Time zone conversion helpers.
 pub mod timezone;
 
-/// Common error type returned throughout the crate.
+/// Error type returned by parsing, compilation, and scheduling.
 pub use error::CronError;
 
-/// High-level immutable cron schedule.
+/// Immutable compiled cron schedule.
+///
+/// This is the primary entry point for the library.
 pub use scheduler::scheduler::CronSchedule;

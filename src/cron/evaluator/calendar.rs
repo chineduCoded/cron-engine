@@ -22,35 +22,60 @@ const MONTH_LENGTHS: [[u8; 12]; 2] = [
     [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
 ];
 
+/// Day of the week.
+///
+/// Weekdays are represented using Quartz and POSIX numbering:
+///
+/// | Value | Day |
+/// |------:|-----|
+/// | 0 | Sunday |
+/// | 1 | Monday |
+/// | 2 | Tuesday |
+/// | 3 | Wednesday |
+/// | 4 | Thursday |
+/// | 5 | Friday |
+/// | 6 | Saturday |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Weekday(pub u8);
 
 impl Weekday {
+    /// Creates a weekday.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `value` is greater than `6`.
     #[inline]
     pub const fn new(value: u8) -> Self {
         assert!(value <= 6);
         Self(value)
     }
 
+    /// Creates a weekday by wrapping the value into the range `0..=6`.
+    ///
+    /// This is equivalent to `value % 7`.
     pub const fn wrapping(value: u8) -> Self {
         Self(value % 7)
     }
 
+    /// Returns the numeric representation of this weekday.
     #[inline]
     pub const fn value(self) -> u8 {
         self.0
     }
 
+    /// Returns `true` if this is Monday through Friday.
     #[inline]
     pub const fn is_weekday(self) -> bool {
         matches!(self.0, 1..=5)
     }
 
+    /// Returns `true` if this is Saturday or Sunday.
     #[inline]
     pub const fn is_weekend(self) -> bool {
         !self.is_weekday()
     }
 
+    /// Returns the next weekday, wrapping from Saturday to Sunday.
     #[inline]
     pub const fn next(self) -> Self {
         Self((self.0 + 1) % 7)
@@ -110,24 +135,36 @@ impl From<chrono::Weekday> for Weekday {
     }
 }
 
+/// Calendar date used during schedule evaluation.
+///
+/// Unlike `chrono::DateTime`, this type stores only the calendar
+/// components required by cron day-rule evaluation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Calendar {
+    /// Four-digit calendar year.
     pub year: i32,
+
+    /// Month of the year (`1..-12`).
     pub month: u32,
+
+    /// Day of month (`1..=31`).
     pub day: u32,
 }
 
 impl Calendar {
+    /// Creates a calendar date.
     #[inline]
     pub const fn new(year: i32, month: u32, day: u32) -> Self {
         Self { year, month, day }
     }
 
+    /// Returrns the day of week for this date.
     #[inline]
     pub fn weekday(&self) -> Weekday {
         Self::week_day(self.year, self.month, self.day)
     }
 
+    /// Returrns `true` if this date is the final day of its month.
     #[inline]
     pub fn is_last_day(&self) -> bool {
         self.day == Self::days_in_month(self.year, self.month)
@@ -195,7 +232,22 @@ impl Calendar {
         }
     }
 
-    pub fn nth_weekday(year: i32, month: u32, weekday: u32, nth: u32) -> Option<u32> {
+    /// Returns the day of month corresponding to the `nth` occurrence of a
+    /// weekday within a month.
+    ///
+    /// For example, the third Friday of June 2025:
+    ///
+    /// ```text
+    /// nth_weekday(2025, 6, 5, 3) == Some(20)
+    /// ```
+    ///
+    /// Returns `None` if the requested occurrence does not exist.
+    pub fn nth_weekday(
+        year: i32, 
+        month: u32, 
+        weekday: u32, 
+        nth: u32
+    ) -> Option<u32> {
         let mut count = 0;
 
         let max = Self::days_in_month(year, month);
@@ -215,6 +267,15 @@ impl Calendar {
         None
     }
 
+    /// Returns the last occurrence of a weekday within a month.
+    ///
+    /// This is used to evaluate Quartz expressions such as `5L`
+    /// ("last Friday of the month").
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the weekday is outside the valid range.
+    /// Every month contains at least one occurrence of every weekday.
     pub fn last_weekday(year: i32, month: u32, weekday: Weekday) -> u32 {
         let max = Self::days_in_month(year, month);
 
@@ -226,6 +287,11 @@ impl Calendar {
         unreachable!("Every month has at least one of each weekday");
     }
 
+    /// Returns the last business day of a month.
+    ///
+    /// Business days are Monday through Friday.
+    ///
+    /// This is used to evaluate the Quartz `LW` expression.
     pub fn last_business_day(year: i32, month: u32) -> u32 {
         let mut day = Self::days_in_month(year, month);
 
@@ -236,11 +302,19 @@ impl Calendar {
         day
     }
 
+    /// Returns the number of days in a month.
+    ///
+    /// Leap years are handled automatically for February.
     #[inline]
     pub fn days_in_month(year: i32, month: u32) -> u32 {
         MONTH_LENGTHS[Self::is_leap_year(year) as usize][(month - 1) as usize] as u32
     }
 
+    /// Returns `true` if the specified year is a leap year in the
+    /// Gregorian calendar.
+    ///
+    /// A leap year is divisible by 4, except years divisible by 100,
+    /// unless they are also divisible by 400.
     #[inline]
     pub const fn is_leap_year(year: i32) -> bool {
         (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
