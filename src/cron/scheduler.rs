@@ -20,9 +20,6 @@
 //! Candidate normalization guarantees every intermediate datetime
 //! remains valid before timezone resolution.
 
-/// Builder for constructing compiled cron schedules programmatically.
-pub mod builder;
-
 /// Candidate date-time representation used while searching for matching
 /// schedule occurrences.
 pub mod candidate;

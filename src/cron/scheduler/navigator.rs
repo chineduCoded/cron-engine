@@ -51,30 +51,44 @@ impl<'a, T> NumericNavigator<'a, T>
 where
     T: FieldSearch,
 {
+    /// Creates a navigator over a numeric field matcher.
     pub fn new(field: &'a T) -> Self {
         Self { field }
     }
 
+    /// Returns whether the specified value matches the field.
     #[inline]
     pub fn contains(&self, value: u32) -> bool {
         self.field.contains(value)
     }
 
+    /// Returns the minimum value accepted by the field. 
+    ///
+    /// # Panics 
+    ///
+    /// Panics if the field matcher contains no values.
     #[inline]
     pub fn min(&self) -> u32 {
         self.field.min().expect("field matcher must not be empty")
     }
 
+    /// Returns the maximum value accepted by the field. 
+    ///
+    /// # Panics 
+    ///
+    /// Panics if the field matcher contains no values.
     #[inline]
     pub fn max(&self) -> u32 {
         self.field.max().expect("field matcher must not be empty")
     }
 
+    /// Returns the next matching value greater than or equal to `value`.
     #[inline]
     pub fn next_or_same(&self, value: u32) -> Option<u32> {
         self.field.next_or_same(value)
     }
 
+    /// Returns the next matching value strictly greater than `value`.
     #[inline]
     pub fn next(&self, value: u32) -> Option<u32> {
         self.field.next(value)

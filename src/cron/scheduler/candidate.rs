@@ -13,26 +13,36 @@ use crate::cron::{
     timezone::resolve_local,
 };
 
-/// Mutable scheduling state.
+/// Mutable date-time candidate used during schedule search.
 ///
-/// Candidate is advanced field-by-field until every rule
-/// matches.
+/// The scheduler incrementally adjusts a `Candidate` until every cron
+/// field matches the compiled schedule.
 ///
-/// It never stores timezone information.
-///
-/// Timezone resolution happens only after all fields match.
+/// Unlike `chrono::DateTime`, this type is time zone agnostic and stores
+/// only the calendar and time components needed during navigation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Candidate {
+    /// Calendar year.
     pub year: i32,
+
+    /// Month of the year (`1..12`).
     pub month: u32,
+
+    /// Day of month (`1..=31`)
     pub day: u32,
 
+    /// Hour of day (`0..=23`).
     pub hour: u32,
+
+    /// Minute of hour (`0..=59`)
     pub minute: u32,
+
+    /// Second of minute (`0..=59`)
     pub second: u32,
 }
 
 impl Candidate {
+    /// Creates a new candidate from its individual date-time components.
     pub fn new(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> Self {
         Self {
             year,
@@ -44,6 +54,10 @@ impl Candidate {
         }
     }
 
+    /// Normalizes the candidate into a canonical calendar representation.
+    ///
+    /// If the stored components form an invalid date or time, the
+    /// candidate is left unchanged.
     pub fn normalize(&mut self) {
         let Some(naive) = self.to_naive() else {
             return;
@@ -52,6 +66,7 @@ impl Candidate {
         *self = Candidate::from_naive(naive);
     }
 
+    /// Creates a candidate from a time zone aware date-time.
     pub fn from_datetime(dt: DateTime<Tz>) -> Self {
         Self {
             year: dt.year(),
@@ -63,6 +78,7 @@ impl Candidate {
         }
     }
 
+    /// Creates a candidate from a naive date-time.
     pub fn from_naive(naive: NaiveDateTime) -> Self {
         Self {
             year: naive.year(),
@@ -74,17 +90,30 @@ impl Candidate {
         }
     }
 
+    /// Converts this candidate into a `NaiveDateTime`.
+    ///
+    /// Returns `None` if the stored components do not form a valid
+    /// calendar date or time.
     pub fn to_naive(self) -> Option<NaiveDateTime> {
         let date = NaiveDate::from_ymd_opt(self.year, self.month, self.day)?;
 
         date.and_hms_opt(self.hour, self.minute, self.second)
     }
 
+    /// Converts this candidate into a time zone aware date-time.
+    ///
+    /// Returns `None` if the candidate represents an invalid local time,
+    /// such as a nonexistent instant during a daylight saving transition.
     pub fn to_datetime(&self, tz: &Tz) -> Option<DateTime<Tz>> {
         let naive = self.to_naive()?;
         resolve_local(tz, naive)
     }
 
+    /// Resets all fields smaller than `field` to the minimum values
+    /// permitted by the compiled schedule.
+    ///
+    /// This is performed whenever a larger field changes during schedule
+    /// navigation.
     pub fn reset_after(&mut self, field: Field, ir: &CronIr) {
         match field {
             Field::Year => {
@@ -123,6 +152,7 @@ impl Candidate {
         self.second = ir.min_second();
     }
 
+    /// Returns the value of the specified field.
     pub fn get(&self, field: Field) -> u32 {
         match field {
             Field::Year => self.year as u32,
@@ -134,6 +164,7 @@ impl Candidate {
         }
     }
 
+    /// Sets the value of the specified field.
     pub fn set(&mut self, field: Field, value: u32) {
         match field {
             Field::Year => self.year = value as i32,
@@ -145,7 +176,14 @@ impl Candidate {
         }
     }
 
-    /// Advances the parent field.
+    /// Advances the next larger field.
+    ///
+    /// For example:
+    ///
+    /// - advancing the parent of `Minute` increments the hour;
+    /// - advancing the parent of `Day` advances to the next month.
+    ///
+    /// This is used when the current field wraps past its maximum value.
     pub fn advance_parent(&mut self, field: Field) {
         match field {
             Field::Year => {
@@ -164,10 +202,17 @@ impl Candidate {
         }
     }
 
+    /// Advances the candidate to the next calendar day.
+    ///
+    /// The time-of-day components are preserved.
     pub fn next_valid_day(&mut self) {
         self.map_datetime(|dt| dt + Duration::days(1));
     }
 
+    /// Advances the candidate by one second.
+    ///
+    /// This is the smallest scheduling increment and is typically used
+    /// after all fields have matched except the final verification step.
     pub fn advance_smallest(&mut self) {
         self.map_datetime(|dt| dt + Duration::seconds(1));
     }
@@ -195,6 +240,18 @@ impl Candidate {
     }
 }
 
+/// Advances a numeric cron field to its next valid value.
+///
+/// If the field already satisfies the schedule, the candidate is left
+/// unchanged.
+///
+/// If the field advances without wrapping, all smaller fields are reset
+/// to their minimum scheduled values.
+///
+/// If the field wraps, its parent field is advanced before resetting the
+/// smaller fields.
+///
+/// Returns `true` if the candidate was modified.
 pub fn advance_numeric(candidate: &mut Candidate, ir: &CronIr, field: Field) -> bool {
     let Some(matcher) = ir.matcher(field) else {
         panic!("advance_numeric called for non-numeric field")

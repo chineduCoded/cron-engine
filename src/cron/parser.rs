@@ -31,25 +31,50 @@ use crate::cron::{
     resolver::{month_name, weekday_name},
 };
 
+/// Controls whether the seconds field is accepted by the parser. 
+///
+/// This option determines the expected number of fields in a cron 
+/// expression.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, EnumIs)]
 pub enum Seconds {
+    /// The seconds field may be present but not required.
     #[default]
     Optional,
+
+    /// The seconds field must be present.
     Required,
+
+    /// The seconds field must not be present.
     Disallowed,
 }
 
+/// Controls whether the year field is accepted by the parser. 
+///
+/// This option determines whether a trailing year field is allowed in 
+/// cron expressions.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, EnumIs)]
 pub enum Year {
+    /// The year field may be present but is not required.
     #[default]
     Optional,
+
+    /// The year field must be present.
     Required,
+
+    /// The year field must not allowed.
     Disallowed,
 }
 
-/// Parser for Cron patterns
+/// Parser for Quartz-compatible cron expressions. 
 ///
-/// To build a custom cron parser use [`CronParser::builder`].
+/// A `CronParser` converts a textual cron expression into a [`CronAst`]. 
+///
+/// By default the parser accepts optional seconds and optional year 
+///
+/// fields. Use [`CronParser::builder`] to customize this behavior. 
+///
+///The parser performs syntax validation only. Semantic validation and 
+///optimization are performed later by the compiler.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Builder)]
 #[builder(default, build_fn(skip), pattern = "owned")]
 pub struct CronParser {
@@ -239,6 +264,18 @@ impl CronParser {
         result.into()
     }
 
+    /// Parses a single cron field. 
+    ///
+    /// The field is interpreted according to the supplied 
+    /// [`FieldKind`], allowing support for field-specific syntax such 
+    /// as month names, weekday names, `L`, `W`, and `#`. 
+    ///
+    /// Comma-separated expressions are parsed into /// [`FieldExpr::List`]. 
+    ///
+    /// # Errors 
+    ///
+    /// Returns a [`CronError`] if the field is empty or contains invalid 
+    /// syntax.
     pub fn parse_field(input: &str, kind: FieldKind) -> Result<FieldExpr, CronError> {
         let input = input.trim();
 
@@ -361,6 +398,10 @@ impl CronParser {
 }
 
 impl CronParserBuilder {
+    /// Builds a configured [`CronParser`]. 
+    ///
+    /// The resulting parser is immutable and may be reused to parse 
+    /// multiple cron expressions.
     pub fn build(self) -> CronParser {
         let CronParserBuilder {
             seconds,
@@ -379,14 +420,32 @@ impl CronParserBuilder {
     }
 }
 
+/// Identifies the cron field currently being parsed. 
+///
+/// Different field kinds support different syntax and value ranges. 
+/// For example, months accept month names while day fields support 
+/// Quartz-specific calendar rules.
 #[derive(Debug, Clone, Copy)]
 pub enum FieldKind {
+    /// Seconds (`0..=59`).
     Second,
+
+    /// Minutes (`0..=59`).
     Minute,
+
+    /// Hours (`0..=23`).
     Hour,
+
+    /// Day of the month.
     Day,
+
+    /// Month of the year.
     Month,
+
+    /// Day of the week.
     Weekday,
+
+    /// Calendar year.
     Year,
 }
 
