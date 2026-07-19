@@ -47,7 +47,7 @@ cron-engine = "0.1"
 
 ## Example 
 ```rust 
-use chrono::{TimeZone, Timelike; 
+use chrono::{TimeZone, Timelike}; 
 use chrono_tz::UTC; 
 use cron_engine::CronSchedule;
 
