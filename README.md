@@ -1,9 +1,5 @@
 # cron-engine 
 
-[![Crates.io](https://img.shields.io/crates/v/cron-engine.svg)](https://crates.io/crates/cron-engine) 
-[![Documentation](https://docs.rs/cron-engine/badge.svg)](https://docs.rs/cron-engine) 
-[![License](https://img.shields.io/crates/l/cron-engine.svg)](LICENSE) 
-
 A high-performance, Quartz-compatible cron parser and scheduler written in Rust. 
 
 `cron-engine` parses cron expressions into an optimized intermediate representation (IR) and computes future or previous occurrences using efficient bitset-based evaluation with minimal allocations. 
