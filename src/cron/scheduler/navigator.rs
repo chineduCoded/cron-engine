@@ -62,9 +62,9 @@ where
         self.field.contains(value)
     }
 
-    /// Returns the minimum value accepted by the field. 
+    /// Returns the minimum value accepted by the field.
     ///
-    /// # Panics 
+    /// # Panics
     ///
     /// Panics if the field matcher contains no values.
     #[inline]
@@ -72,9 +72,9 @@ where
         self.field.min().expect("field matcher must not be empty")
     }
 
-    /// Returns the maximum value accepted by the field. 
+    /// Returns the maximum value accepted by the field.
     ///
-    /// # Panics 
+    /// # Panics
     ///
     /// Panics if the field matcher contains no values.
     #[inline]

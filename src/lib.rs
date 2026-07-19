@@ -38,22 +38,6 @@
 //! - [`CronSchedule`] — immutable compiled schedule.
 //! - [`CronError`] — parsing and scheduling errors.
 //!
-//! ## Architecture
-//!
-//! ```text
-//! Expression
-//!     ▼
-//! Parser
-//!     ▼
-//! AST
-//!     ▼
-//! Compiler
-//!     ▼
-//! IR
-//!     ▼
-//! Scheduler
-//! ```
-//!
 //! See the `cron` module for implementation details.
 
 #![warn(missing_docs)]

@@ -1,7 +1,7 @@
-/// Fields that participate in schedule navigation. 
-/// 
-/// The scheduler processes these fields from largest (`Year`) to 
-/// smallest (`Second`) while searching for the next or previous 
+/// Fields that participate in schedule navigation.
+///
+/// The scheduler processes these fields from largest (`Year`) to
+/// smallest (`Second`) while searching for the next or previous
 /// matching occurrence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Field {
@@ -24,10 +24,10 @@ pub enum Field {
     Second,
 }
 
-/// Numeric cron fields backed by a [`FieldMatcher`]. 
+/// Numeric cron fields backed by a [`FieldMatcher`].
 ///
-/// Unlike [`Field`], this enum excludes the day field because day 
-/// matching is governed by Quartz calendar rules (`L`, `W`, `LW`, 
+/// Unlike [`Field`], this enum excludes the day field because day
+/// matching is governed by Quartz calendar rules (`L`, `W`, `LW`,
 /// `#`, etc.) rather than simple numeric matching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NumericField {

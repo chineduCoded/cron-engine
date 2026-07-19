@@ -22,12 +22,12 @@ pub struct CronIterator {
 }
 
 impl CronIterator {
-    /// Creates a lazy iterator over matching schedule occurrences. 
+    /// Creates a lazy iterator over matching schedule occurrences.
     ///
-    /// The iterator computes each occurrence on demand in the specified 
-    /// search direction. 
+    /// The iterator computes each occurrence on demand in the specified
+    /// search direction.
     ///
-    /// If `inclusive` is `true`, the starting instant is returned if it 
+    /// If `inclusive` is `true`, the starting instant is returned if it
     /// already satisfies the schedule.
     pub fn new(
         schedule: CronSchedule,

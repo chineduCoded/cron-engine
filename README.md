@@ -24,17 +24,18 @@ A high-performance, Quartz-compatible cron parser and scheduler written in Rust.
 
 ### Supported syntax 
 
-| Feature | Supported | |----------|-----------| 
-| Wildcard `*` | ✓ | 
-| Lists `1,2,3` | ✓ | 
-| Ranges `1-5` | ✓ | 
-| Steps `*/5` | ✓ | 
-| Month names | ✓ | 
-| Weekday names | ✓ | 
-| `L` | ✓ | 
-| `LW` | ✓ | 
-| `W` | ✓ | 
-| `#` | ✓ | 
+| Feature | Supported |
+|----------|-----------|
+| Wildcard `*` | ✓ |
+| Lists `1,2,3` | ✓ |
+| Ranges `1-5` | ✓ |
+| Steps `*/5` | ✓ |
+| Month names | ✓ |
+| Weekday names | ✓ |
+| `L` | ✓ |
+| `LW` | ✓ |
+| `W` | ✓ |
+| `#` | ✓ |
 | `5L` | ✓ | 
 
 ## Installation 

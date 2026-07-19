@@ -242,12 +242,7 @@ impl Calendar {
     /// ```
     ///
     /// Returns `None` if the requested occurrence does not exist.
-    pub fn nth_weekday(
-        year: i32, 
-        month: u32, 
-        weekday: u32, 
-        nth: u32
-    ) -> Option<u32> {
+    pub fn nth_weekday(year: i32, month: u32, weekday: u32, nth: u32) -> Option<u32> {
         let mut count = 0;
 
         let max = Self::days_in_month(year, month);

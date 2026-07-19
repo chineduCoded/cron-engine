@@ -4,14 +4,14 @@ use crate::cron::{
     field::{BitField, BitFieldIter, MAX_YEAR, MIN_YEAR},
 };
 
-/// Optimized intermediate representation (IR) of a compiled cron 
-/// expression. 
+/// Optimized intermediate representation (IR) of a compiled cron
+/// expression.
 ///
-/// `CronIr` is produced by the compiler from a parsed [`CronAst`] and is 
-/// consumed by the scheduler during occurrence calculation. 
+/// `CronIr` is produced by the compiler from a parsed [`CronAst`] and is
+/// consumed by the scheduler during occurrence calculation.
 ///
-/// Numeric fields are represented by [`FieldMatcher`]s for efficient 
-/// membership tests, while day-of-month and day-of-week fields retain 
+/// Numeric fields are represented by [`FieldMatcher`]s for efficient
+/// membership tests, while day-of-month and day-of-week fields retain
 /// their Quartz-specific semantics through [`DayRule`].
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct CronIr {
@@ -33,20 +33,20 @@ pub struct CronIr {
     /// Day-of-week matching rule.
     pub day_of_week: DayRule,
 
-    /// Allowed years. 
+    /// Allowed years.
     ///
     /// If `None`, the schedule is valid for all supported years.
     pub year: Option<FieldMatcher>,
 
-    /// Controls how day-of-month and day-of-week rules are combined. 
+    /// Controls how day-of-month and day-of-week rules are combined.
     ///
-    /// - `true` → match if either rule matches (OR) 
+    /// - `true` → match if either rule matches (OR)
     /// - `false` → both rules must match (AND)
     pub dom_dow_or: bool,
 }
 
 impl CronIr {
-    /// Returns the smallest year accepted by the schedule. 
+    /// Returns the smallest year accepted by the schedule.
     ///
     /// If no year constraint is present, [`MIN_YEAR`] is returned.
     pub fn min_year(&self) -> u32 {
@@ -56,7 +56,7 @@ impl CronIr {
             .unwrap_or(MIN_YEAR)
     }
 
-    /// Returns the largest year accepted by the schedule. 
+    /// Returns the largest year accepted by the schedule.
     ///
     /// If no year constraint is present, [`MAX_YEAR`] is returned.
     pub fn max_year(&self) -> u32 {
@@ -66,45 +66,45 @@ impl CronIr {
             .unwrap_or(MAX_YEAR)
     }
 
-    /// Returns the smallest allowed hour. 
+    /// Returns the smallest allowed hour.
     ///
-    /// # Panics 
+    /// # Panics
     ///
     /// Panics if the hour matcher is empty.
     pub fn min_hour(&self) -> u32 {
         self.hour.min().expect("hour matcher cannot be empty")
     }
 
-    /// Returns the smallest allowed minute. 
+    /// Returns the smallest allowed minute.
     ///
-    /// # Panics 
+    /// # Panics
     ///
     /// Panics if the minute matcher is empty.
     pub fn min_minute(&self) -> u32 {
         self.minute.min().expect("minute matcher cannot be empty")
     }
 
-    /// Returns the smallest allowed second. 
+    /// Returns the smallest allowed second.
     ///
-    /// # Panics 
+    /// # Panics
     ///
     /// Panics if the second matcher is empty.
     pub fn min_second(&self) -> u32 {
         self.second.min().expect("second matcher cannot be empty")
     }
 
-    /// Returns the smallest allowed month. 
+    /// Returns the smallest allowed month.
     ///
-    /// # Panics 
+    /// # Panics
     ///
     /// Panics if the month matcher is empty.
     pub fn min_month(&self) -> u32 {
         self.month.min().expect("month matcher cannot be empty")
     }
 
-    /// Returns the numeric matcher associated with a scheduler field. 
+    /// Returns the numeric matcher associated with a scheduler field.
     ///
-    /// Returns `None` for [`Field::Day`], since day matching is handled 
+    /// Returns `None` for [`Field::Day`], since day matching is handled
     /// by [`DayRule`] rather than a numeric matcher.
     pub fn matcher(&self, field: Field) -> Option<&FieldMatcher> {
         match field {
@@ -123,14 +123,14 @@ impl CronIr {
     }
 }
 
-/// Storage representation for the values accepted by a cron field. 
+/// Storage representation for the values accepted by a cron field.
 ///
-/// Small, dense domains (such as seconds, minutes, hours, months, and 
-/// weekdays) are represented as a [`BitField`] for constant-time 
-/// membership tests. 
+/// Small, dense domains (such as seconds, minutes, hours, months, and
+/// weekdays) are represented as a [`BitField`] for constant-time
+/// membership tests.
 ///
-/// Larger or sparse domains (such as years) are represented as a sorted 
-/// vector. 
+/// Larger or sparse domains (such as years) are represented as a sorted
+/// vector.
 ///
 /// Both variants expose the same lookup interface used by the scheduler.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -143,9 +143,9 @@ pub enum CronValue {
 }
 
 impl CronValue {
-    /// Sorts and removes duplicate values. 
+    /// Sorts and removes duplicate values.
     ///
-    /// This ensures the vector representation remains suitable for 
+    /// This ensures the vector representation remains suitable for
     /// binary-search-based lookups.
     pub fn normalize_vec(mut v: Vec<u32>) -> Vec<u32> {
         v.sort_unstable();
@@ -161,7 +161,7 @@ impl CronValue {
         }
     }
 
-    /// Returns the first matching value greater than or equal to `start`. 
+    /// Returns the first matching value greater than or equal to `start`.
     ///
     /// This is an inclusive search.
     pub fn next_or_same(&self, start: u32) -> Option<u32> {
@@ -187,8 +187,8 @@ impl CronValue {
         }
     }
 
-    /// Returns the next matching value, wrapping to the minimum value if 
-    /// necessary. 
+    /// Returns the next matching value, wrapping to the minimum value if
+    /// necessary.
     ///
     /// This is primarily used when advancing numeric scheduler fields.
     pub fn next_wrapping(&self, start: u32) -> Option<u32> {
@@ -205,12 +205,12 @@ impl CronValue {
         }
     }
 
-    /// Returns the underlying values for the vector representation. 
+    /// Returns the underlying values for the vector representation.
     ///
-    /// # Panics 
+    /// # Panics
     ///
-    /// Panics if this value is backed by a [`BitField`]. Use 
-    /// [`CronValue::iter`] instead when the storage representation is 
+    /// Panics if this value is backed by a [`BitField`]. Use
+    /// [`CronValue::iter`] instead when the storage representation is
     /// unknown.
     pub fn values(&self) -> &[u32] {
         // small inconsistency avoided by returning slice via enum match
@@ -221,7 +221,7 @@ impl CronValue {
         }
     }
 
-    /// Returns the minimum allowed value. 
+    /// Returns the minimum allowed value.
     ///
     /// Returns `None` if the field contains no values.
     pub fn min(&self) -> Option<u32> {
@@ -231,7 +231,7 @@ impl CronValue {
         }
     }
 
-    /// Returns the maximum allowed value. 
+    /// Returns the maximum allowed value.
     ///
     /// Returns `None` if the field contains no values.
     pub fn max(&self) -> Option<u32> {
@@ -241,9 +241,9 @@ impl CronValue {
         }
     }
 
-    /// Returns an iterator over the allowed values. 
+    /// Returns an iterator over the allowed values.
     ///
-    /// Values are yielded in ascending order regardless of the internal 
+    /// Values are yielded in ascending order regardless of the internal
     /// storage representation.
     pub fn iter(&self) -> CronValueIter<'_> {
         match self {
@@ -254,9 +254,9 @@ impl CronValue {
     }
 }
 
-/// Iterator over the values contained in a [`CronValue`]. 
+/// Iterator over the values contained in a [`CronValue`].
 ///
-/// This enum provides a unified iterator interface for both bitset- 
+/// This enum provides a unified iterator interface for both bitset-
 /// backed and vector-backed representations.
 pub enum CronValueIter<'a> {
     /// Iterator over values stored in a [`BitField`].
@@ -277,9 +277,9 @@ impl Iterator for CronValueIter<'_> {
     }
 }
 
-/// Efficient matcher for a numeric cron field. 
+/// Efficient matcher for a numeric cron field.
 ///
-/// `FieldMatcher` provides constant-time or logarithmic-time lookup, 
+/// `FieldMatcher` provides constant-time or logarithmic-time lookup,
 /// depending on the underlying representation.
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct FieldMatcher {
@@ -293,13 +293,13 @@ impl FieldMatcher {
         self.value.contains(value)
     }
 
-    /// Returns the first matching value greater than or equal to 
+    /// Returns the first matching value greater than or equal to
     /// `value`.
     pub fn next_or_same(&self, value: u32) -> Option<u32> {
         self.value.next_or_same(value)
     }
 
-    /// Returns the next matching value, wrapping to the minimum value if 
+    /// Returns the next matching value, wrapping to the minimum value if
     /// necessary.
     pub fn next_wrapping(&self, value: u32) -> Option<u32> {
         self.value.next_wrapping(value)
@@ -330,10 +330,10 @@ impl From<BitField> for FieldMatcher {
     }
 }
 
-/// Quartz-compatible matching rule for day-of-month and day-of-week 
-/// fields. 
+/// Quartz-compatible matching rule for day-of-month and day-of-week
+/// fields.
 ///
-/// Unlike other cron fields, day fields support calendar-aware 
+/// Unlike other cron fields, day fields support calendar-aware
 /// expressions such as `L`, `LW`, `W`, and `#`.
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub enum DayRule {
@@ -346,29 +346,29 @@ pub enum DayRule {
     /// Matches the last day of the month (`L`).
     LastDay,
 
-    /// Matches the last occurrence of the specified weekday in the month 
+    /// Matches the last occurrence of the specified weekday in the month
     /// (for example, `5L`).
     LastWeekday(u32),
 
-    /// Matches the last business day (Monday–Friday) of the month 
+    /// Matches the last business day (Monday–Friday) of the month
     /// (`LW`).
     LastBusinessDay,
 
-    /// Matches the weekday nearest the specified day of the month 
+    /// Matches the weekday nearest the specified day of the month
     /// (for example, `15W`).
     NearestWeekday(u32),
 
-    /// Matches the *n*th occurrence of a weekday within the month 
+    /// Matches the *n*th occurrence of a weekday within the month
     /// (for example, `1#3` for the third Monday).
     NthWeekday {
         /// Weekday (`0 = Sunday` through `6 = Saturday`).
         weekday: u32,
 
         /// One-based occurrence within the month.
-        nth: u32 
+        nth: u32,
     },
 
-    /// Matches if any contained rule matches. 
+    /// Matches if any contained rule matches.
     ///
     /// Used for comma-separated day expressions.
     List(Vec<DayRule>),

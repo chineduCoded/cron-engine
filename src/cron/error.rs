@@ -24,14 +24,14 @@ pub enum CronError {
     #[error("invalid pattern: {reason}")]
     InvalidPattern {
         /// Human-readable explanation.
-        reason: String 
+        reason: String,
     },
 
     /// The expression contains unsupported characters.
     #[error("illegal characters in pattern: {chars}")]
     IllegalCharacters {
         /// Invalid characters that were encountered.
-        chars: String
+        chars: String,
     },
 
     /// One field failed to parse.
@@ -41,7 +41,7 @@ pub enum CronError {
         position: usize,
 
         /// Description of the failure.
-        reason: String
+        reason: String,
     },
 
     /// The overall expression is malformed.
@@ -55,7 +55,7 @@ pub enum CronError {
         expected: usize,
 
         /// Actual field count.
-        found: usize
+        found: usize,
     },
 
     /// A field contains an invalid numeric value.

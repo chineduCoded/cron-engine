@@ -12,9 +12,9 @@ use crate::cron::{
     timezone::resolve_local,
 };
 
-/// Returns whether the given date-time satisfies the compiled schedule. 
+/// Returns whether the given date-time satisfies the compiled schedule.
 ///
-/// Every numeric field together with the calendar-based day rules must 
+/// Every numeric field together with the calendar-based day rules must
 /// match for the schedule to be considered satisfied.
 pub fn matches(ir: &CronIr, dt: DateTime<Tz>) -> bool {
     let calendar = Calendar::from(&dt);
@@ -38,15 +38,15 @@ fn matches_year(ir: &CronIr, year: i32) -> bool {
     }
 }
 
-/// Finds the first occurrence strictly after the supplied date-time. 
+/// Finds the first occurrence strictly after the supplied date-time.
 ///
-/// The search operates on a mutable scheduling candidate, advancing 
-/// fields from largest to smallest until a valid occurrence is found. 
+/// The search operates on a mutable scheduling candidate, advancing
+/// fields from largest to smallest until a valid occurrence is found.
 ///
-/// The returned date-time is guaranteed to satisfy the compiled 
-/// schedule. 
+/// The returned date-time is guaranteed to satisfy the compiled
+/// schedule.
 ///
-/// Returns `None` if no future occurrence exists or the candidate 
+/// Returns `None` if no future occurrence exists or the candidate
 /// cannot be represented in the schedule's time zone.
 pub fn next_after_tz(ir: &CronIr, dt: DateTime<Tz>) -> Option<DateTime<Tz>> {
     let dt = normalize_next(dt)?;

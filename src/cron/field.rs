@@ -767,11 +767,7 @@ pub const NTH_5TH_BIT: u64 = CronFlags::bit(7);
 /// Equivalent to the bitwise OR of
 /// [`NTH_1ST_BIT`], [`NTH_2ND_BIT`], [`NTH_3RD_BIT`],
 /// [`NTH_4TH_BIT`], and [`NTH_5TH_BIT`].
-pub const NTH_ALL: u64 = NTH_1ST_BIT 
-    | NTH_2ND_BIT 
-    | NTH_3RD_BIT 
-    | NTH_4TH_BIT 
-    | NTH_5TH_BIT;
+pub const NTH_ALL: u64 = NTH_1ST_BIT | NTH_2ND_BIT | NTH_3RD_BIT | NTH_4TH_BIT | NTH_5TH_BIT;
 
 /// Maximum number of values representable by a [`BitField`].
 ///
