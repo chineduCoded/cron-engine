@@ -5,12 +5,9 @@ use chrono_tz::Tz;
 use proptest::prelude::*;
 
 use crate::cron::{
-    ir::CronIr,
-    scheduler::{
-        field::Field,
-        navigator::{AdvanceResult, FieldNavigator, NumericNavigator},
-    },
-    timezone::resolve_local,
+    evaluator::calendar::Calendar, ir::CronIr, scheduler::{
+        field::Field, navigator::{FieldNavigator, NavigationResult, NumericNavigator}, scheduler::Direction,
+    }, timezone::resolve_local,
 };
 
 /// Mutable date-time candidate used during schedule search.
@@ -109,28 +106,33 @@ impl Candidate {
         resolve_local(tz, naive)
     }
 
-    /// Resets all fields smaller than `field` to the minimum values
-    /// permitted by the compiled schedule.
-    ///
-    /// This is performed whenever a larger field changes during schedule
-    /// navigation.
-    pub fn reset_after(&mut self, field: Field, ir: &CronIr) {
+    pub fn reset_after(
+        &mut self,
+        field: Field,
+        ir: &CronIr,
+        direction: Direction,
+    ) {
+        match direction {
+            Direction::Forward => self.reset_forward(field, ir),
+            Direction::Backward => self.reset_backward(field, ir),
+        }
+    }
+
+    fn reset_forward(&mut self, field: Field, ir: &CronIr) {
         match field {
             Field::Year => {
                 self.month = ir.min_month();
                 self.day = 1;
-
-                self.reset_time(ir);
+                self.reset_time_forward(ir);
             }
 
             Field::Month => {
                 self.day = 1;
-
-                self.reset_time(ir);
+                self.reset_time_forward(ir);
             }
 
             Field::Day => {
-                self.reset_time(ir);
+            self.reset_time_forward(ir);
             }
 
             Field::Hour => {
@@ -146,10 +148,46 @@ impl Candidate {
         }
     }
 
-    fn reset_time(&mut self, ir: &CronIr) {
+    fn reset_backward(&mut self, field: Field, ir: &CronIr) {
+        match field {
+            Field::Year => {
+                self.month = ir.max_month();
+                self.day = Calendar::days_in_month(self.year, self.month);
+                self.reset_time_backward(ir);
+            }
+
+            Field::Month => {
+                self.day = Calendar::days_in_month(self.year, self.month);
+                self.reset_time_backward(ir);
+            }
+
+            Field::Day => {
+                self.reset_time_backward(ir);
+            }
+
+            Field::Hour => {
+                self.minute = ir.max_minute();
+                self.second = ir.max_second();
+            }
+
+            Field::Minute => {
+                self.second = ir.max_second();
+            }
+
+            Field::Second => {}
+        }
+    }
+
+    fn reset_time_forward(&mut self, ir: &CronIr) {
         self.hour = ir.min_hour();
         self.minute = ir.min_minute();
         self.second = ir.min_second();
+    }
+
+    fn reset_time_backward(&mut self, ir: &CronIr) {
+        self.hour = ir.max_hour();
+        self.minute = ir.max_minute();
+        self.second = ir.max_second();
     }
 
     /// Returns the value of the specified field.
@@ -202,19 +240,65 @@ impl Candidate {
         }
     }
 
-    /// Advances the candidate to the next calendar day.
-    ///
-    /// The time-of-day components are preserved.
-    pub fn next_valid_day(&mut self) {
-        self.map_datetime(|dt| dt + Duration::days(1));
+    fn retreat_parent(&mut self, field: Field) {
+        match field {
+            Field::Year => {}
+
+            Field::Month => {
+                self.year -= 1;
+            }
+
+            Field::Day => {
+                self.previous_month();
+            }
+
+            Field::Hour => {
+                self.map_datetime(|dt| dt - Duration::days(1));
+            }
+
+            Field::Minute => {
+                self.map_datetime(|dt| dt - Duration::hours(1));
+            }
+
+            Field::Second => {
+                self.map_datetime(|dt| dt - Duration::minutes(1));
+            }
+        }
     }
 
-    /// Advances the candidate by one second.
-    ///
-    /// This is the smallest scheduling increment and is typically used
-    /// after all fields have matched except the final verification step.
-    pub fn advance_smallest(&mut self) {
-        self.map_datetime(|dt| dt + Duration::seconds(1));
+    pub fn bump_parent(
+        &mut self,
+        field: Field,
+        direction: Direction,
+    ) {
+        match direction {
+            Direction::Forward => self.advance_parent(field),
+            Direction::Backward => self.retreat_parent(field),
+        }
+    }
+ 
+    pub fn move_day(&mut self, direction: Direction) {
+        match direction {
+            Direction::Forward => {
+                self.map_datetime(|dt| dt + Duration::days(1));
+            }
+
+            Direction::Backward => {
+                self.map_datetime(|dt| dt - Duration::days(1));
+            }
+        }
+    }
+
+    pub fn move_smallest(&mut self, direction: Direction) {
+        match direction {
+            Direction::Forward => {
+                self.map_datetime(|dt| dt + Duration::seconds(1));
+            }
+
+            Direction::Backward => {
+                self.map_datetime(|dt| dt - Duration::seconds(1));
+            }
+        }
     }
 
     fn map_datetime(&mut self, f: impl FnOnce(NaiveDateTime) -> NaiveDateTime) {
@@ -238,40 +322,61 @@ impl Candidate {
             }
         });
     }
+
+    fn previous_month(&mut self) {
+        self.map_datetime(|dt| {
+            let first = dt.with_day(1).unwrap();
+
+            if first.month() == 1 {
+                first
+                    .with_year(first.year() - 1)
+                    .unwrap()
+                    .with_month(12)
+                    .unwrap()
+            } else {
+                first.with_month(first.month() - 1).unwrap()
+            }
+        });
+    }
 }
 
-/// Advances a numeric cron field to its next valid value.
+/// Navigates a numeric cron field according to the supplied direction.
 ///
-/// If the field already satisfies the schedule, the candidate is left
-/// unchanged.
+/// If the current value already satisfies the field, the candidate is
+/// left unchanged.
 ///
-/// If the field advances without wrapping, all smaller fields are reset
-/// to their minimum scheduled values.
+/// When the field changes without wrapping, all less-significant fields
+/// are reset to their nearest valid boundary for the chosen direction.
 ///
-/// If the field wraps, its parent field is advanced before resetting the
-/// smaller fields.
+/// When the field wraps, the parent field is moved in the same direction
+/// before resetting the less-significant fields.
 ///
 /// Returns `true` if the candidate was modified.
-pub fn advance_numeric(candidate: &mut Candidate, ir: &CronIr, field: Field) -> bool {
+pub fn navigate_numeric(
+    candidate: &mut Candidate, 
+    ir: &CronIr, 
+    field: Field,
+    direction: Direction,
+) -> bool {
     let Some(matcher) = ir.matcher(field) else {
-        panic!("advance_numeric called for non-numeric field")
+        panic!("navigate_numeric called for non-numeric field");
     };
 
     let nav = NumericNavigator::new(matcher);
 
-    match nav.advance(candidate.get(field)) {
-        AdvanceResult::Unchanged => false,
+    match nav.navigate(candidate.get(field), direction) {
+        NavigationResult::Unchanged => false,
 
-        AdvanceResult::Changed(next) => {
+        NavigationResult::Changed(next) => {
             candidate.set(field, next);
-            candidate.reset_after(field, ir);
+            candidate.reset_after(field, ir, direction);
             true
         }
 
-        AdvanceResult::Wrapped(min) => {
-            candidate.advance_parent(field);
-            candidate.set(field, min);
-            candidate.reset_after(field, ir);
+        NavigationResult::Wrapped(value) => {
+            candidate.bump_parent(field, direction);
+            candidate.set(field, value);
+            candidate.reset_after(field, ir, direction);
             true
         }
     }
@@ -404,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_after_year() {
+    fn reset_forward_year() {
         let mut c = Candidate {
             year: 2030,
             month: 12,
@@ -415,7 +520,7 @@ mod tests {
             second: 58,
         };
 
-        c.reset_after(Field::Year, &ir());
+        c.reset_after(Field::Year, &ir(), Direction::Forward);
 
         assert_eq!(c.month, 2);
         assert_eq!(c.day, 1);
@@ -426,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_after_month() {
+    fn reset_forward_month() {
         let mut c = Candidate {
             year: 2025,
             month: 12,
@@ -437,7 +542,7 @@ mod tests {
             second: 50,
         };
 
-        c.reset_after(Field::Month, &ir());
+        c.reset_after(Field::Month, &ir(), Direction::Forward);
 
         assert_eq!(c.day, 1);
 
@@ -447,7 +552,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_after_day() {
+    fn reset_forward_day() {
         let mut c = Candidate {
             year: 2025,
             month: 7,
@@ -458,7 +563,7 @@ mod tests {
             second: 59,
         };
 
-        c.reset_after(Field::Day, &ir());
+        c.reset_after(Field::Day, &ir(), Direction::Forward);
 
         assert_eq!(c.hour, 3);
         assert_eq!(c.minute, 10);
@@ -466,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_after_hour() {
+    fn reset_forward_hour() {
         let mut c = Candidate {
             year: 2025,
             month: 7,
@@ -477,14 +582,14 @@ mod tests {
             second: 33,
         };
 
-        c.reset_after(Field::Hour, &ir());
+        c.reset_after(Field::Hour, &ir(), Direction::Forward);
 
         assert_eq!(c.minute, 10);
         assert_eq!(c.second, 5);
     }
 
     #[test]
-    fn reset_after_minute() {
+    fn reset_forward_minute() {
         let mut c = Candidate {
             year: 2025,
             month: 7,
@@ -495,13 +600,13 @@ mod tests {
             second: 33,
         };
 
-        c.reset_after(Field::Minute, &ir());
+        c.reset_after(Field::Minute, &ir(), Direction::Forward);
 
         assert_eq!(c.second, 5);
     }
 
     #[test]
-    fn reset_after_second_does_nothing() {
+    fn reset_forward_second_does_nothing() {
         let mut c = Candidate {
             year: 2025,
             month: 7,
@@ -514,7 +619,7 @@ mod tests {
 
         let before = c;
 
-        c.reset_after(Field::Second, &ir());
+        c.reset_after(Field::Second, &ir(), Direction::Forward);
 
         assert_eq!(c, before);
     }
@@ -799,7 +904,7 @@ mod tests {
             second: 5,
         };
 
-        assert!(!advance_numeric(&mut candidate, &ir, Field::Second,));
+        assert!(!navigate_numeric(&mut candidate, &ir, Field::Second, Direction::Forward));
     }
 
     #[test]
@@ -815,7 +920,7 @@ mod tests {
             second: 50,
         };
 
-        assert!(!advance_numeric(&mut candidate, &ir, Field::Minute,));
+        assert!(!navigate_numeric(&mut candidate, &ir, Field::Minute, Direction::Forward));
 
         assert_eq!(candidate.minute, 10);
     }
@@ -826,7 +931,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 2, 10, 3, 15, 50);
 
-        assert!(!advance_numeric(&mut candidate, &ir, Field::Hour,));
+        assert!(!navigate_numeric(&mut candidate, &ir, Field::Hour, Direction::Forward));
 
         assert_eq!(candidate.hour, 3);
     }
@@ -839,7 +944,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 2, 10, 3, 10, 17);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Second,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Second, Direction::Forward));
 
         assert_eq!(candidate.second, 20);
     }
@@ -852,7 +957,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 2, 10, 3, 17, 55);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Minute,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Minute, Direction::Forward));
 
         assert_eq!(candidate.minute, 20);
 
@@ -868,7 +973,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 2, 10, 5, 30, 40);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Hour,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Hour, Direction::Forward));
 
         assert_eq!(candidate.hour, 8);
 
@@ -884,7 +989,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 3, 17, 8, 20, 30);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Month,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Month, Direction::Forward));
 
         assert_eq!(candidate.month, 5);
 
@@ -903,7 +1008,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2026, 8, 20, 9, 40, 50);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Year,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Year, Direction::Forward));
 
         assert_eq!(candidate.year, 2027);
 
@@ -921,7 +1026,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 2, 10, 3, 10, 59);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Second,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Second, Direction::Forward));
 
         assert_eq!(candidate.minute, 11);
         assert_eq!(candidate.second, 5);
@@ -933,7 +1038,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 2, 10, 3, 59, 20);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Minute,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Minute, Direction::Forward));
 
         assert_eq!(candidate.hour, 4);
         assert_eq!(candidate.minute, 10);
@@ -946,7 +1051,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 2, 10, 23, 40, 50);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Hour,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Hour, Direction::Forward));
 
         assert_eq!(candidate.day, 11);
 
@@ -962,7 +1067,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2025, 12, 25, 12, 20, 30);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Month,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Month, Direction::Forward));
 
         assert_eq!(candidate.year, 2026);
         assert_eq!(candidate.month, 2);
@@ -982,7 +1087,7 @@ mod tests {
 
         let mut candidate = Candidate::new(2028, 8, 20, 9, 40, 50);
 
-        assert!(advance_numeric(&mut candidate, &ir, Field::Year,));
+        assert!(navigate_numeric(&mut candidate, &ir, Field::Year, Direction::Forward));
 
         assert_eq!(candidate.year, 2025);
 
@@ -995,13 +1100,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "advance_numeric called for non-numeric field")]
+    #[should_panic(expected = "navigate_numeric called for non-numeric field")]
     fn advance_day_panics() {
         let ir = ir();
 
         let mut candidate = Candidate::new(2025, 2, 10, 3, 10, 5);
 
-        advance_numeric(&mut candidate, &ir, Field::Day);
+        navigate_numeric(&mut candidate, &ir, Field::Day, Direction::Forward);
     }
 }
 
@@ -1026,7 +1131,7 @@ proptest! {
         let before =
             candidate.to_naive().unwrap();
 
-        candidate.next_valid_day();
+        candidate.move_day(Direction::Forward);
 
         let after =
             candidate.to_naive().unwrap();

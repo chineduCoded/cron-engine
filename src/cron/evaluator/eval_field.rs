@@ -1,14 +1,31 @@
-//! Evaluation of numeric cron fields.
-//!
-//! This module provides helper functions for matching values against
-//! compiled field matchers used by the scheduler.
+use chrono::{DateTime, Datelike, Timelike};
+use chrono_tz::Tz;
 
-use crate::cron::ir::FieldMatcher;
+use crate::cron::{evaluator::{calendar::Calendar, day::matches_day}, ir::CronIr};
 
-/// Returns `true` if a field matcher accepts the specified value.
+/// Returns whether the given date-time satisfies the compiled schedule.
 ///
-/// This is the fundamental predicate used to evaluate numeric cron
-/// fields such as seconds, minutes, hours, months, and years.
-pub fn matches(field: &FieldMatcher, value: u32) -> bool {
-    field.contains(value)
+/// Every numeric field together with the calendar-based day rules must
+/// match for the schedule to be considered satisfied.
+pub fn matches(ir: &CronIr, dt: DateTime<Tz>) -> bool {
+    let calendar = Calendar::from(&dt);
+
+    ir.second.contains(dt.second())
+        && ir.minute.contains(dt.minute())
+        && ir.hour.contains(dt.hour())
+        && ir.month.contains(dt.month())
+        && matches_year(ir, dt.year())
+        && matches_day(ir, &calendar)
 }
+
+fn matches_year(ir: &CronIr, year: i32) -> bool {
+    let Ok(year) = u32::try_from(year) else {
+        return false;
+    };
+
+    match &ir.year {
+        Some(years) => years.contains(year),
+        None => true,
+    }
+}
+

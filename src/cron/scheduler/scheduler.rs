@@ -6,11 +6,7 @@ use chrono_tz::Tz;
 use proptest::prelude::*;
 
 use crate::cron::{
-    CronError,
-    compiler::CronCompiler,
-    ir::CronIr,
-    parser::CronParser,
-    scheduler::{iterator::CronIterator, next, prev},
+    CronError, compiler::CronCompiler, evaluator::eval_field::matches, ir::CronIr, parser::CronParser, scheduler::{iterator::CronIterator, next, prev},
 };
 
 /// Direction used by scheduler navigation.
@@ -184,7 +180,7 @@ impl CronSchedule {
     /// # Ok::<(), cron_engine::CronError>(())
     /// ```
     pub fn matches(&self, dt: DateTime<Tz>) -> bool {
-        next::matches(&self.ir, dt)
+        matches(&self.ir, dt)
     }
 
     /// Returns the first occurrence strictly after `datetime`.

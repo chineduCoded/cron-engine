@@ -44,3 +44,6 @@ pub mod prev;
 
 /// High-level scheduling API.
 pub mod scheduler;
+
+/// Shared search for forward and backward implementation.
+pub mod search;

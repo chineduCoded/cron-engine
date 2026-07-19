@@ -1,17 +1,37 @@
-use crate::cron::ir::FieldMatcher;
+use crate::cron::{ir::FieldMatcher, scheduler::scheduler::Direction};
 
-/// Result of navigating a numeric cron field.
+
+/// Result of navigating a scheduler field.
+///
+/// This value describes how the scheduler should proceed after attempting
+/// to move a field to a matching value.
+///
+/// Unlike the raw search methods on [`FieldMatcher`], this type encodes
+/// whether the current value already matched, a new value was selected
+/// within the current parent field, or the search wrapped around and the
+/// parent field must be adjusted.
+///
+/// Used by both forward and backward schedulers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AdvanceResult {
-    /// Current value already satisfies the matcher.
+pub enum NavigationResult {
+    /// The current value already satisfies the field matcher.
+    ///
+    /// No changes are required.
     Unchanged,
 
-    /// Next valid value within the current parent field.
+    /// A different matching value was found within the current parent field.
+    ///
+    /// The contained value should replace the current field value while
+    /// leaving higher-order fields unchanged.
     Changed(u32),
 
-    /// Wrapped back to the minimum value.
+    /// Navigation wrapped past the field boundary.
     ///
-    /// The scheduler must advance the parent field.
+    /// For forward navigation this is the minimum allowed value after
+    /// advancing the parent field.
+    ///
+    /// For backward navigation this is the maximum allowed value after
+    /// decrementing the parent field.
     Wrapped(u32),
 }
 
@@ -19,19 +39,15 @@ pub enum AdvanceResult {
 ///
 /// Seconds, minutes, hours, months and years all satisfy this.
 pub trait FieldSearch {
-    /// Returns true if value is accepted.
     fn contains(&self, value: u32) -> bool;
 
-    /// Returns the first allowed value >= current.
     fn next_or_same(&self, current: u32) -> Option<u32>;
-
-    /// Returns the first allowed value > current.
     fn next(&self, current: u32) -> Option<u32>;
 
-    /// Smallest accepted value.
-    fn min(&self) -> Option<u32>;
+    fn prev_or_same(&self, current: u32) -> Option<u32>;
+    fn prev(&self, current: u32) -> Option<u32>;
 
-    /// Largest accepted value.
+    fn min(&self) -> Option<u32>;
     fn max(&self) -> Option<u32>;
 }
 
@@ -93,27 +109,65 @@ where
     pub fn next(&self, value: u32) -> Option<u32> {
         self.field.next(value)
     }
+
+    #[inline]
+    pub fn prev_or_same(&self, value: u32) -> Option<u32> {
+        self.field.prev_or_same(value)
+    }
+
+    #[inline]
+    pub fn prev(&self, value: u32) -> Option<u32> {
+        self.field.prev(value)
+    }
 }
 
 /// Generic navigation behaviour.
 pub trait FieldNavigator {
-    /// Computes the next valid value relative to `current`.
-    ///
-    /// This method is pure: it does not mutate any state.
-    fn advance(&self, current: u32) -> AdvanceResult;
+    fn advance(&self, current: u32) -> NavigationResult;
+    fn retreat(&self, current: u32) -> NavigationResult;
+    fn navigate(
+        &self,
+        current: u32,
+        direction: Direction,
+    ) -> NavigationResult;
 }
 
 impl<T> FieldNavigator for NumericNavigator<'_, T>
 where
     T: FieldSearch,
 {
-    fn advance(&self, current: u32) -> AdvanceResult {
+    fn advance(&self, current: u32) -> NavigationResult {
         match self.field.next_or_same(current) {
-            Some(next) if next == current => AdvanceResult::Unchanged,
+            Some(next) if next == current => NavigationResult::Unchanged,
 
-            Some(next) => AdvanceResult::Changed(next),
+            Some(next) => NavigationResult::Changed(next),
 
-            None => AdvanceResult::Wrapped(self.field.min().expect("field matche cannot be empty")),
+            None => NavigationResult::Wrapped(self.field.min().expect("field matche cannot be empty")),
+        }
+    }
+
+    fn retreat(&self, current: u32) -> NavigationResult {
+        match self.field.prev_or_same(current) {
+            Some(prev) if prev == current => NavigationResult::Unchanged,
+
+            Some(prev) => NavigationResult::Changed(prev),
+
+            None => NavigationResult::Wrapped(
+                self.field
+                    .max()
+                    .expect("field matcher cannot be empty"),
+            ),
+        }
+    }
+
+    fn navigate(
+        &self,
+        current: u32,
+        direction: Direction,
+    ) ->NavigationResult {
+        match direction {
+            Direction::Forward => self.advance(current),
+            Direction::Backward => self.retreat(current),
         }
     }
 }
@@ -133,6 +187,16 @@ impl FieldSearch for FieldMatcher {
     #[inline]
     fn next(&self, value: u32) -> Option<u32> {
         self.next(value)
+    }
+
+    #[inline]
+    fn prev_or_same(&self, value: u32) -> Option<u32> {
+        self.prev_or_same(value)
+    }
+
+    #[inline]
+    fn prev(&self, value: u32) -> Option<u32> {
+        self.prev(value)
     }
 
     #[inline]
@@ -167,7 +231,7 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(10), AdvanceResult::Unchanged,);
+        assert_eq!(nav.advance(10), NavigationResult::Unchanged,);
     }
 
     #[test]
@@ -176,7 +240,7 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(6), AdvanceResult::Changed(10),);
+        assert_eq!(nav.advance(6), NavigationResult::Changed(10),);
     }
 
     #[test]
@@ -185,9 +249,9 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(2), AdvanceResult::Changed(4),);
+        assert_eq!(nav.advance(2), NavigationResult::Changed(4),);
 
-        assert_eq!(nav.advance(5), AdvanceResult::Changed(8),);
+        assert_eq!(nav.advance(5), NavigationResult::Changed(8),);
     }
 
     #[test]
@@ -196,7 +260,7 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(21), AdvanceResult::Wrapped(5),);
+        assert_eq!(nav.advance(21), NavigationResult::Wrapped(5),);
     }
 
     #[test]
@@ -205,7 +269,7 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(16), AdvanceResult::Wrapped(15),);
+        assert_eq!(nav.advance(16), NavigationResult::Wrapped(15),);
     }
 
     #[test]
@@ -214,7 +278,7 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(42), AdvanceResult::Unchanged,);
+        assert_eq!(nav.advance(42), NavigationResult::Unchanged,);
     }
 
     #[test]
@@ -223,7 +287,7 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(50), AdvanceResult::Wrapped(42),);
+        assert_eq!(nav.advance(50), NavigationResult::Wrapped(42),);
     }
 
     #[test]
@@ -239,7 +303,7 @@ mod tests {
         let nav = NumericNavigator::new(&matcher);
 
         for i in 0..60 {
-            assert_eq!(nav.advance(i), AdvanceResult::Unchanged,);
+            assert_eq!(nav.advance(i), NavigationResult::Unchanged,);
         }
     }
 
@@ -273,15 +337,15 @@ mod tests {
 
         for current in 0..20 {
             match nav.advance(current) {
-                AdvanceResult::Changed(next) => {
+                NavigationResult::Changed(next) => {
                     assert!(next > current);
                 }
 
-                AdvanceResult::Wrapped(next) => {
+                NavigationResult::Wrapped(next) => {
                     assert_eq!(next, 3);
                 }
 
-                AdvanceResult::Unchanged => {}
+                NavigationResult::Unchanged => {}
             }
         }
     }
@@ -292,7 +356,7 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(0), AdvanceResult::Changed(10),);
+        assert_eq!(nav.advance(0), NavigationResult::Changed(10),);
     }
 
     #[test]
@@ -301,8 +365,8 @@ mod tests {
 
         let nav = NumericNavigator::new(&matcher);
 
-        assert_eq!(nav.advance(11), AdvanceResult::Changed(20),);
+        assert_eq!(nav.advance(11), NavigationResult::Changed(20),);
 
-        assert_eq!(nav.advance(21), AdvanceResult::Changed(30),);
+        assert_eq!(nav.advance(21), NavigationResult::Changed(30),);
     }
 }

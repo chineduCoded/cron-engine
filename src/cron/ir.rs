@@ -75,6 +75,10 @@ impl CronIr {
         self.hour.min().expect("hour matcher cannot be empty")
     }
 
+    pub fn max_hour(&self) -> u32 {
+        self.hour.max().expect("hour matcher cannot be empty")
+    }
+
     /// Returns the smallest allowed minute.
     ///
     /// # Panics
@@ -82,6 +86,10 @@ impl CronIr {
     /// Panics if the minute matcher is empty.
     pub fn min_minute(&self) -> u32 {
         self.minute.min().expect("minute matcher cannot be empty")
+    }
+
+    pub fn max_minute(&self) -> u32 {
+        self.minute.max().expect("minute matcher cannot be empty")
     }
 
     /// Returns the smallest allowed second.
@@ -93,6 +101,10 @@ impl CronIr {
         self.second.min().expect("second matcher cannot be empty")
     }
 
+    pub fn max_second(&self) -> u32 {
+        self.second.max().expect("second matcher cannot be empty")
+    }
+
     /// Returns the smallest allowed month.
     ///
     /// # Panics
@@ -100,6 +112,10 @@ impl CronIr {
     /// Panics if the month matcher is empty.
     pub fn min_month(&self) -> u32 {
         self.month.min().expect("month matcher cannot be empty")
+    }
+
+    pub fn max_month(&self) -> u32 {
+        self.month.max().expect("month matcher cannot be empty")
     }
 
     /// Returns the numeric matcher associated with a scheduler field.
@@ -161,9 +177,17 @@ impl CronValue {
         }
     }
 
-    /// Returns the first matching value greater than or equal to `start`.
+    /// Returns the smallest enabled value greater than or equal to `start`.
     ///
-    /// This is an inclusive search.
+    /// Unlike [`CronValue::next_wrapping`], this method does not wrap to the
+    /// beginning of the field.
+    ///
+    /// Returns `None` if no enabled value exists at or after `start`.
+    ///
+    /// # Complexity
+    ///
+    /// - `O(1)` for [`BitField`] storage.
+    /// - `O(log n)` for vector-backed storage.
     pub fn next_or_same(&self, start: u32) -> Option<u32> {
         match self {
             CronValue::Bit(bf) => bf.next_from(start),
@@ -175,7 +199,17 @@ impl CronValue {
         }
     }
 
-    /// Returns the first matching value strictly greater than `start`.
+    /// Returns the smallest enabled value strictly greater than `start`.
+    ///
+    /// Unlike [`CronValue::next_wrapping`], this method does not wrap to the
+    /// beginning of the field.
+    ///
+    /// Returns `None` if no enabled value exists after `start`.
+    ///
+    /// # Complexity
+    ///
+    /// - `O(1)` for [`BitField`] storage.
+    /// - `O(log n)` for vector-backed storage.
     pub fn next_from(&self, start: u32) -> Option<u32> {
         match self {
             CronValue::Bit(bf) => bf.next_from(start),
@@ -187,10 +221,19 @@ impl CronValue {
         }
     }
 
-    /// Returns the next matching value, wrapping to the minimum value if
-    /// necessary.
+    /// Returns the next enabled value, wrapping to the minimum enabled value
+    /// if necessary.
     ///
-    /// This is primarily used when advancing numeric scheduler fields.
+    /// Unlike [`CronValue::next_from`], this method never stops at the upper
+    /// bound. If no later value exists, the search wraps to the smallest
+    /// enabled value.
+    ///
+    /// Returns `None` only if the field contains no enabled values.
+    ///
+    /// # Complexity
+    ///
+    /// - `O(1)` for [`BitField`] storage.
+    /// - `O(log n)` for vector-backed storage.
     pub fn next_wrapping(&self, start: u32) -> Option<u32> {
         match self {
             Self::Bit(bf) => bf.next_wrapping(start),
@@ -201,6 +244,80 @@ impl CronValue {
                 };
 
                 v.get(i).copied().or_else(|| v.first().copied())
+            }
+        }
+    }
+
+    /// Returns the greatest enabled value less than or equal to `start`.
+    ///
+    /// Unlike [`CronValue::prev_wrapping`], this method does not wrap to the
+    /// maximum enabled value.
+    ///
+    /// Returns `None` if no enabled value exists at or before `start`.
+    ///
+    /// # Complexity
+    ///
+    /// - `O(1)` for [`BitField`] storage.
+    /// - `O(log n)` for vector-backed storage.
+    pub fn prev_or_same(&self, start: u32) -> Option<u32> {
+        match self {
+            CronValue::Bit(bf) => bf.prev_from(start),
+
+            CronValue::Vec(v) => match v.binary_search(&start) {
+                Ok(i) => Some(v[i]),
+                Err(0) => None,
+                Err(i) => Some(v[i - 1]),
+            },
+        }
+    }
+
+    /// Returns the greatest enabled value strictly less than `start`.
+    ///
+    /// Unlike [`CronValue::prev_wrapping`], this method does not wrap to the
+    /// maximum enabled value.
+    ///
+    /// Returns `None` if no enabled value exists before `start`.
+    ///
+    /// # Complexity
+    ///
+    /// - `O(1)` for [`BitField`] storage.
+    /// - `O(log n)` for vector-backed storage.
+    pub fn prev_from(&self, start: u32) -> Option<u32> {
+        match self {
+            CronValue::Bit(bf) => bf.prev_from(start.saturating_sub(1)),
+            CronValue::Vec(v) => {
+                let target = start.saturating_sub(1);
+
+                match v.binary_search(&target) {
+                    Ok(i) => Some(v[i]),
+                    Err(0) => None,
+                    Err(i) => Some(v[i - 1]),
+                }
+            }
+        }
+
+    }
+
+    /// Returns the previous enabled value, wrapping to the maximum enabled
+    /// value if necessary.
+    ///
+    /// Unlike [`CronValue::prev_from`], this method never stops at the lower
+    /// bound. If no earlier value exists, the search wraps to the greatest
+    /// enabled value.
+    ///
+    /// Returns `None` only if the field contains no enabled values.
+    ///
+    /// # Complexity
+    ///
+    /// - `O(1)` for [`BitField`] storage.
+    /// - `O(log n)` for vector-backed storage.
+    pub fn prev_wrapping(&self, start: u32) -> Option<u32> {
+        match self {
+            CronValue::Bit(bf) => bf.prev_wrapping(start),
+            CronValue::Vec(v) => match v.binary_search(&start) {
+                Ok(i) => Some(v[i]),
+                Err(0) => v.last().copied(),
+                Err(i) => Some(v[i - 1]),
             }
         }
     }
@@ -288,26 +405,95 @@ pub struct FieldMatcher {
 }
 
 impl FieldMatcher {
-    /// Returns whether the given value is accepted by this field.
+    /// Returns whether the matcher contains `value`. 
+    ///
+    /// This is the primary membership test used during schedule evaluation. 
+    ///
+    /// # Complexity 
+    ///
+    /// - Bit-backed matcher: **O(1)** 
+    ///
+    /// - Vector-backed matcher: **O(log n)**
     pub fn contains(&self, value: u32) -> bool {
         self.value.contains(value)
     }
 
-    /// Returns the first matching value greater than or equal to
-    /// `value`.
+    /// Returns the first matching value greater than or equal to `value`. 
+    ///
+    /// This performs an inclusive search. 
+    ///
+    /// Returns `None` if no matching value exists at or after `value`. 
+    ///
+    /// # Complexity 
+    ///
+    /// - Bit-backed matcher: **O(1)** 
+    /// - Vector-backed matcher: **O(log n)**
     pub fn next_or_same(&self, value: u32) -> Option<u32> {
         self.value.next_or_same(value)
     }
 
-    /// Returns the next matching value, wrapping to the minimum value if
-    /// necessary.
+    /// Returns the next matching value, wrapping to the minimum value if 
+    /// necessary. 
+    ///
+    /// If no matching value exists after `value`, the search continues from 
+    /// the beginning of the field. 
+    ///
+    /// Returns `None` only if the matcher contains no values. 
+    ///
+    /// # Complexity 
+    ///
+    /// - Bit-backed matcher: **O(1)** 
+    /// - Vector-backed matcher: **O(log n)**
     pub fn next_wrapping(&self, value: u32) -> Option<u32> {
         self.value.next_wrapping(value)
     }
 
-    /// Returns the first matching value strictly greater than `value`.
+    /// Returns the first matching value strictly greater than `value`. 
+    ///
+    /// Unlike [`FieldMatcher::next_or_same`], the supplied value itself is 
+    /// never considered a match. 
+    ///
+    /// Returns `None` if no later matching value exists. 
+    ///
+    /// # Complexity /// /// - Bit-backed matcher: **O(1)** 
+    /// - Vector-backed matcher: **O(log n)**
     pub fn next(&self, value: u32) -> Option<u32> {
         self.value.next_from(value)
+    }
+
+    /// Returns the greatest enabled value strictly less than `value`.
+    ///
+    /// Unlike [`FieldMatcher::prev_wrapping`], this method does not wrap to
+    /// the maximum enabled value.
+    ///
+    /// Returns `None` if no enabled value exists before `value`.
+    #[inline]
+    pub fn prev(&self, value: u32) -> Option<u32> {
+        self.value.prev_from(value)
+    }
+
+    /// Returns the greatest enabled value less than or equal to `value`.
+    ///
+    /// Unlike [`FieldMatcher::prev_wrapping`], this method does not wrap to
+    /// the maximum enabled value.
+    ///
+    /// Returns `None` if no enabled value exists at or before `value`.
+    #[inline]
+    pub fn prev_or_same(&self, value: u32) -> Option<u32> {
+        self.value.prev_or_same(value)
+    }
+
+    /// Returns the previous enabled value, wrapping to the maximum enabled
+    /// value if necessary.
+    ///
+    /// Unlike [`FieldMatcher::prev`], this method never stops at the lower
+    /// bound. If no earlier value exists, the search wraps to the greatest
+    /// enabled value.
+    ///
+    /// Returns `None` only if the matcher contains no enabled values.
+    #[inline]
+    pub fn prev_wrapping(&self, value: u32) -> Option<u32> {
+        self.value.prev_wrapping(value)
     }
 
     /// Returns the minimum value accepted by this field.

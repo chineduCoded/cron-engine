@@ -71,7 +71,7 @@ Typical results:
 - BitField contains: ~350 ps 
 - BitField next: ~340 ps 
 - Scheduler next occurrence: <1 µs 
-- 1,000,000 occurrences: ~0.8 s 
+- 1,000,000 occurrences: <0.8 s 
 
 See [BENCHMARKS.md](BENCHMARKS.md). 
 

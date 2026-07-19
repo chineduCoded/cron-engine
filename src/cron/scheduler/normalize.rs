@@ -1,11 +1,21 @@
 use chrono::{DateTime, Duration, Timelike};
 use chrono_tz::Tz;
 
-/// Normalizes a starting instant for forward schedule searches.
+use crate::cron::scheduler::scheduler::Direction;
+
+/// Normalizes the starting instant for schedule navigation.
 ///
-/// Nanoseconds are discarded and the search advances by one second so
-/// that `next_after()` returns occurrences strictly after the supplied
-/// instant.
-pub fn normalize_next(dt: DateTime<Tz>) -> Option<DateTime<Tz>> {
-    Some(dt.with_nanosecond(0)? + Duration::seconds(1))
+/// Forward searches begin one second after the supplied instant, while
+/// backward searches begin one second before it. Nanoseconds are
+/// discarded so that scheduling operates at whole-second precision.
+pub fn normalize(
+    dt: DateTime<Tz>,
+    direction: Direction,
+) -> Option<DateTime<Tz>> {
+    let dt = dt.with_nanosecond(0)?;
+
+    Some(match direction {
+        Direction::Forward => dt + Duration::seconds(1),
+        Direction::Backward => dt - Duration::seconds(1),
+    })
 }
