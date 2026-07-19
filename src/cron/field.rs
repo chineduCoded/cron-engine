@@ -373,6 +373,57 @@ impl BitField {
         Some(self.offset + pos)
     }
 
+    /// Returns the last enabled value less than or equal to `start`.
+    ///
+    /// Unlike [`BitField::prev_wrapping`], this method does not wrap to the
+    /// end of the field.
+    ///
+    /// Returns `None` if:
+    ///
+    /// - the bitfield is empty,
+    /// - no enabled value exists at or before `start`.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::BitField;
+    /// let mut bf = BitField::empty(0, 60);
+    /// bf.set(5);
+    /// bf.set(20);
+    ///
+    /// assert_eq!(bf.prev_from(20), Some(20));
+    /// assert_eq!(bf.prev_from(19), Some(5));
+    /// assert_eq!(bf.prev_from(4), None);
+    /// ```
+    #[inline]
+    pub fn prev_from(&self, start: u32) -> Option<u32> {
+        if self.bits == 0 {
+            return None;
+        }
+
+        let start = start.saturating_sub(self.offset);
+
+        if start >= self.width {
+            return self.last_set();
+        }
+
+        let mask = Self::width_mask(start + 1);
+
+        let bits = self.bits & mask;
+
+        if bits == 0 {
+            return None;
+        }
+
+        let pos = 63 - bits.leading_zeros();
+
+        Some(self.offset + pos)
+    }
+
     /// Returns the next enabled value, wrapping to the beginning if necessary.
     ///
     /// Unlike [`BitField::next_from`], this method never stops at the upper bound.
@@ -398,6 +449,39 @@ impl BitField {
         }
 
         self.first_set()
+    }
+
+    /// Returns the previous enabled value, wrapping to the end if necessary.
+    ///
+    /// Unlike [`BitField::prev_from`], this method never stops at the lower
+    /// bound. If no earlier value exists, the search continues from the
+    /// maximum enabled value.
+    ///
+    /// Returns `None` only if the bitfield is empty.
+    ///
+    /// # Complexity
+    ///
+    /// O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cron_engine::BitField;
+    /// let mut bf = BitField::empty(0, 60);
+    /// bf.set(5);
+    /// bf.set(20);
+    ///
+    /// assert_eq!(bf.prev_wrapping(19), Some(5));
+    /// assert_eq!(bf.prev_wrapping(4), Some(20));
+    /// ```
+    #[inline]
+    pub fn prev_wrapping(&self, start: u32) -> Option<u32> {
+        if self.bits == 0 {
+            return None;
+        }
+
+        self.prev_from(start)
+            .or_else(|| self.last_set())
     }
 
     /// Enables the specified value.
