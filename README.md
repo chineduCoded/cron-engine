@@ -64,31 +64,7 @@ println!("{next}");
 # Ok::<(), cron_engine::CronError>(())
 ```
 
-
-## Architecture 
-
-``` Expression 
-│ 
-▼ 
-Parser
-│ 
-▼ 
-AST
-│
-▼
-Compiler 
-│ 
-▼
-IR (BitFields)
-│ 
-▼ 
-Scheduler
-│
-▼
-Occurrences
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md).
+## Architecture See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Performance 
 
